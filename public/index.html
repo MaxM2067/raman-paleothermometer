@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Raman Paleothermometer</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.2.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-error-bars@0.1.3/dist/chartjs-plugin-error-bars.min.js"></script>
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      .navButton {
+        padding: 5px 10px;
+        font-size: 14px;
+        cursor: pointer;
+        background-color: #f0f0f0;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        transition: background-color 0.2s;
+      }
+      .navButton:hover {
+        background-color: #e0e0e0;
+      }
+      .navButton:active {
+        background-color: #d0d0d0;
+      }
+      select {
+        padding: 4px;
+        font-size: 14px;
+        min-width: 200px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Tab Navigation -->
+    <div class="tabBar">
+      <button id="tabExperimental" class="tabButton active">
+        Experimental
+      </button>
+      <button id="tabArchaeological" class="tabButton">Archaeological</button>
+    </div>
+
+    <!-- === EXPERIMENTAL DATA TAB (your original interface) === -->
+    <div id="experimentalSection">
+      <h1>Upload Spectrum Data</h1>
+      <input type="file" id="fileInput" accept=".txt" multiple />
+      <div style="display: flex; align-items: center; gap: 10px; margin: 10px 0;">
+        <label for="fileSelector">Select File to Display: </label>
+        <select id="fileSelector" onchange="updateDisplayedFile()"></select>
+        <button id="prevFile" class="navButton">&lt;&lt;</button>
+        <button id="nextFile" class="navButton">&gt;&gt;</button>
+      </div>
+      <canvas id="spectrumChart"></canvas>
+
+      <div
+        id="intervalInputs"
+        style="margin-top: 20px; font-family: Arial, sans-serif"
+      >
+        <div style="margin-bottom: 10px">
+          <label>
+            Analysis Method:
+            <select id="analysisMethod">
+              <option value="simple" selected>Simple (Moving Average)</option>
+              <option value="voigt">Voigt + Savitzky-Golay</option>
+            </select>
+          </label>
+        </div>
+
+        <h3 style="margin: 0 0 10px 0">Search Intervals for Peaks</h3>
+
+        <div style="margin-bottom: 10px">
+          <label>
+            Mode:
+            <select id="peak1Mode">
+              <option value="broad" selected>Broad</option>
+              <option value="conventional">Conventional</option>
+            </select>
+          </label>
+        </div>
+
+        <table style="width: 100%; max-width: 600px; border-collapse: collapse; margin-bottom: 10px;">
+          <thead>
+            <tr style="background-color: #f2f2f2">
+              <th style="padding: 5px; text-align: center">Band</th>
+              <th style="padding: 5px; text-align: center">Start</th>
+              <th style="padding: 5px; text-align: center">End</th>
+              <th style="padding: 5px; text-align: center">Width %</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding: 5px; text-align: center">D band</td>
+              <td style="padding: 5px; text-align: center">
+                <input
+                  type="number"
+                  id="peak1Start"
+                  value="1300"
+                  style="width: 80px"
+                />
+              </td>
+              <td style="padding: 5px; text-align: center">
+                <input
+                  type="number"
+                  id="peak1End"
+                  value="1400"
+                  style="width: 80px"
+                />
+              </td>
+              <td style="padding: 5px; text-align: center">
+                <input
+                  type="number"
+                  id="dBandWidthHeight"
+                  value="80"
+                  min="0"
+                  max="100"
+                  step="1"
+                  style="width: 60px"
+                />%
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 5px; text-align: center">G band</td>
+              <td style="padding: 5px; text-align: center">
+                <input
+                  type="number"
+                  id="peak2Start"
+                  value="1590"
+                  style="width: 80px"
+                />
+              </td>
+              <td style="padding: 5px; text-align: center">
+                <input
+                  type="number"
+                  id="peak2End"
+                  value="1610"
+                  style="width: 80px"
+                />
+              </td>
+              <td style="padding: 5px; text-align: center">
+                <input
+                  type="number"
+                  id="gBandWidthHeight"
+                  value="60"
+                  min="0"
+                  max="100"
+                  step="1"
+                  style="width: 60px"
+                />%
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Moved Update Button -->
+        <button id="updateButton" style="padding: 5px 20px">
+          Update Peaks
+        </button>
+      </div>
+
+      <div id="peakInfo" style="margin-top: 20px"></div>
+      <div id="methodComparisonResults" style="margin-top: 40px"></div>
+    </div>
+
+    <!-- === ARCHAELOGICAL SAMPLES TAB (new) === -->
+    <div id="archaeologicalSection" style="display: none">
+      <h1>Upload Archaeological Sample Data</h1>
+      <input type="file" id="archaeoFileInput" accept=".txt" multiple />
+      <div style="display: flex; align-items: center; gap: 10px; margin: 10px 0;">
+        <label for="archaeoFileSelector">Select Sample to Display: </label>
+        <select id="archaeoFileSelector"></select>
+        <button id="archaeoPrevFile" class="navButton">&lt;&lt;</button>
+        <button id="archaeoNextFile" class="navButton">&gt;&gt;</button>
+      </div>
+      <canvas id="archaeoSpectrumChart"></canvas>
+
+      <!-- Duplicated Controls Section -->
+      <div
+        id="archaeoIntervalInputs" 
+        style="margin-top: 20px; font-family: Arial, sans-serif"
+      >
+        <div style="margin-bottom: 10px">
+          <label>
+            Analysis Method:
+            <select id="archaeoAnalysisMethod"> 
+              <option value="simple" selected>Simple (Moving Average)</option>
+              <option value="voigt">Voigt + Savitzky-Golay</option>
+            </select>
+          </label>
+        </div>
+
+        <h3 style="margin: 0 0 10px 0">Search Intervals for Peaks</h3>
+
+        <div style="margin-bottom: 10px">
+          <label>
+            Mode:
+            <select id="archaeoPeak1Mode"> 
+              <option value="broad" selected>Broad</option>
+              <option value="conventional">Conventional</option>
+            </select>
+          </label>
+        </div>
+
+        <table style="width: 100%; max-width: 600px; border-collapse: collapse; margin-bottom: 10px;">
+          <thead>
+            <tr style="background-color: #f2f2f2">
+              <th style="padding: 5px; text-align: center">Band</th>
+              <th style="padding: 5px; text-align: center">Start</th>
+              <th style="padding: 5px; text-align: center">End</th>
+              <th style="padding: 5px; text-align: center">Width %</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding: 5px; text-align: center">D band</td>
+              <td style="padding: 5px; text-align: center">
+                <input
+                  type="number"
+                  id="archaeoPeak1Start" 
+                  value="1300"
+                  style="width: 80px"
+                />
+              </td>
+              <td style="padding: 5px; text-align: center">
+                <input
+                  type="number"
+                  id="archaeoPeak1End" 
+                  value="1400"
+                  style="width: 80px"
+                />
+              </td>
+              <td style="padding: 5px; text-align: center">
+                <input
+                  type="number"
+                  id="archaeoDBandWidthHeight" 
+                  value="80"
+                  min="0"
+                  max="100"
+                  step="1"
+                  style="width: 60px"
+                />%
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 5px; text-align: center">G band</td>
+              <td style="padding: 5px; text-align: center">
+                <input
+                  type="number"
+                  id="archaeoPeak2Start" 
+                  value="1590"
+                  style="width: 80px"
+                />
+              </td>
+              <td style="padding: 5px; text-align: center">
+                <input
+                  type="number"
+                  id="archaeoPeak2End" 
+                  value="1610"
+                  style="width: 80px"
+                />
+              </td>
+              <td style="padding: 5px; text-align: center">
+                <input
+                  type="number"
+                  id="archaeoGBandWidthHeight" 
+                  value="60"
+                  min="0"
+                  max="100"
+                  step="1"
+                  style="width: 60px"
+                />%
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Duplicated and Renamed Update Button -->
+        <button id="archaeoUpdateButton" style="padding: 5px 20px"> 
+          Update Peaks
+        </button>
+      </div>
+      <!-- End Duplicated Controls -->
+
+      <div id="derivedTemperatureTable" style="margin-top: 30px"></div>
+      <div id="archaeoStats" style="margin-top: 40px"></div>
+    </div>
+
+    <script src="/script.js"></script>
+    <script>
+      // Get tab buttons
+      const tabExperimental = document.getElementById("tabExperimental");
+      const tabArchaeological = document.getElementById("tabArchaeological");
+
+      // Tab click events
+      tabExperimental.addEventListener("click", () => {
+        document.getElementById("experimentalSection").style.display = "block";
+        document.getElementById("archaeologicalSection").style.display = "none";
+
+        // Highlight this tab
+        tabExperimental.classList.add("active");
+        tabArchaeological.classList.remove("active");
+      });
+
+      tabArchaeological.addEventListener("click", () => {
+        document.getElementById("experimentalSection").style.display = "none";
+        document.getElementById("archaeologicalSection").style.display =
+          "block";
+
+        // Highlight this tab
+        tabArchaeological.classList.add("active");
+        tabExperimental.classList.remove("active");
+      });
+
+      // Initialize controls synchronization - will be done in script.js
+    </script>
+  </body>
+</html>

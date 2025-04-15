@@ -1,0 +1,45 @@
+body {
+  font-family: Arial, sans-serif;
+  text-align: left;
+  padding: 20px;
+}
+
+.tabBar {
+  display: flex;
+  justify-content: left;
+  border-bottom: 1px solid #ccc;
+  margin-bottom: 20px;
+  background: white;
+}
+
+.tabButton {
+  all: unset;
+  font-family: Arial, sans-serif;
+  padding: 12px 24px;
+  font-size: 16px;
+  color: #888;
+  font-weight: normal;
+  position: relative;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.tabButton:hover {
+  color: #444;
+}
+
+.tabButton.active {
+  color: black;
+  font-weight: bold;
+}
+
+.tabButton.active::after {
+  content: "";
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  bottom: 0;
+  height: 3px;
+  background-color: #e600aa; /* pink line */
+  border-radius: 2px;
+}
