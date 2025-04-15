@@ -23,7 +23,7 @@ This web-based application is designed to analyze Raman spectroscopy data from c
   - Derive temperature ranges based on calibration curves from experimental data
   - Show spectra and fitted peaks for each sample
   - Display derived temperatures in a summary table
-  - Overlay archaeological points on calibration charts
+  - Overlay archaeological points on and calibration charts 
 
 ### 📈 Plotting & Interactivity
 - Full spectrum plot with:
