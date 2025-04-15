@@ -257,11 +257,43 @@ function updateArchaeoPlot() {
     },
   ];
 
-  const widthPercentages = [
-    parseFloat(document.getElementById("archaeoDBandWidthHeight").value) / 100,
-    parseFloat(document.getElementById("archaeoGBandWidthHeight").value) / 100,
-  ];
+  const dBandWidthHeight = parseFloat(document.getElementById("archaeoDBandWidthHeight").value);
+  const gBandWidthHeight = parseFloat(document.getElementById("archaeoGBandWidthHeight").value);
+  const widthPercentages = [dBandWidthHeight / 100, gBandWidthHeight / 100];
 
+  const resultsByMethod = {
+    simple: [],
+    voigt: [],
+  };
+
+  archaeologicalFiles.forEach((fileData) => {
+    ["simple", "voigt"].forEach((methodType) => {
+      const { topPeaks } = findTopPeaks(
+        fileData.spectrumData.wavelengths,
+        fileData.spectrumData.intensities,
+        intervals,
+        widthPercentages,
+        methodType,
+        "archaeoSpectrumChart"
+      );
+
+      const d = topPeaks[0] || {};
+      const g = topPeaks[1] || {};
+      const hdHg = d.height && g.height && g.height !== 0 ? d.height / g.height : null;
+      const wdWg = d.width && g.width && g.width !== 0 ? d.width / g.width : null;
+
+      resultsByMethod[methodType].push({
+        name: fileData.name,
+        temperature: "", // Empty for now, will be calculated later
+        hdHg,
+        dWidth: d.width || null,
+        gWidth: g.width || null,
+        wdWg,
+      });
+    });
+  });
+
+  // Plot the current file
   const { topPeaks, fittedCurves } = findTopPeaks(
     spectrumData.wavelengths,
     spectrumData.intensities,
@@ -271,7 +303,6 @@ function updateArchaeoPlot() {
     "archaeoSpectrumChart"
   );
 
-  // Plot to different canvas
   plotSpectrum(
     spectrumData,
     topPeaks,
@@ -281,6 +312,71 @@ function updateArchaeoPlot() {
     method,
     "archaeoSpectrumChart",
   );
+
+  // Display derived temperatures table
+  displayDerivedTemperatures(
+    resultsByMethod[method],
+    method,
+    dBandWidthHeight,
+    gBandWidthHeight,
+    resultsByMethod
+  );
+}
+
+function displayDerivedTemperatures(allPeaks, method, dBandWidthHeight, gBandWidthHeight, resultsByMethod) {
+  const tableDiv = document.getElementById("derivedTemperatureTable");
+  if (!Array.isArray(allPeaks) || allPeaks.length === 0) {
+    tableDiv.innerHTML = "<h3>Derived Temperatures:</h3><p>No peak data available for this method.</p>";
+    return;
+  }
+
+  // Clear the container first
+  tableDiv.innerHTML = '';
+
+  // Create table container HTML
+  const tableContainer = document.createElement('div');
+  tableContainer.innerHTML = `
+    <h3>Derived Temperatures:</h3>
+    <table border="1" style="border-collapse: collapse; width: 100%; max-width: 800px; font-family: Arial, sans-serif; font-size: 14px; margin-bottom: 20px;">
+      <thead>
+        <tr style="background-color: #f2f2f2;">
+          <th style="padding: 5px; text-align: left;">Name</th>
+          <th style="padding: 5px; text-align: center;">HD/HG</th>
+          <th>D width ${dBandWidthHeight + "%H"}</th>
+          <th>G width ${gBandWidthHeight + "%H"}</th>
+          <th style="padding: 5px; text-align: center;">WD/WG</th>
+          <th style="padding: 5px; text-align: center;">Temperature</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Rows will be added here -->
+      </tbody>
+    </table>
+  `;
+
+  const tbodyElement = tableContainer.querySelector('tbody');
+
+  // Populate table rows
+  allPeaks.forEach((file) => {
+    const hdHg = file.hdHg != null ? file.hdHg.toFixed(2) : "N/A";
+    const dWidth = file.dWidth != null ? file.dWidth.toFixed(2) : "N/A";
+    const gWidth = file.gWidth != null ? file.gWidth.toFixed(2) : "N/A";
+    const wdWg = file.wdWg != null ? file.wdWg.toFixed(2) : "N/A";
+
+    tbodyElement.innerHTML += `
+      <tr>
+        <td style="padding: 5px;">${file.name}</td>
+        <td style="padding: 5px; text-align: center;">${hdHg}</td>
+        <td style="padding: 5px; text-align: center;">${dWidth}</td>
+        <td style="padding: 5px; text-align: center;">${gWidth}</td>
+        <td style="padding: 5px; text-align: center;">${wdWg}</td>
+        <td style="padding: 5px; text-align: center;">TBD</td>
+      </tr>
+    `;
+  });
+  
+  // Append the table container
+  tableDiv.appendChild(tableContainer);
 }
 
 function updatePeak1Inputs() {
@@ -996,6 +1092,8 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
           </th>
           <th style="padding: 5px; text-align: left;">Name</th>
           <th style="padding: 5px; text-align: center;">Temperature</th>
+          <th style="padding: 5px; text-align: center;">D Peak (cm⁻¹)</th>
+          <th style="padding: 5px; text-align: center;">G Peak (cm⁻¹)</th>
           <th style="padding: 5px; text-align: center;">HD/HG</th>
           <th>D width ${dBandWidthHeight + "%H"}</th>
           <th>G width ${gBandWidthHeight + "%H"}</th>
@@ -1019,6 +1117,31 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
     const wdWg = file.wdWg != null ? file.wdWg.toFixed(2) : "N/A";
     const isChecked = includedSamples.has(file.name);
 
+    // Find the corresponding file data from allFilesData
+    const fileData = allFilesData.find(f => f.name === file.name);
+    if (!fileData) return;
+
+    // Get peak wavelengths from the topPeaks array
+    const { topPeaks } = findTopPeaks(
+      fileData.spectrumData.wavelengths,
+      fileData.spectrumData.intensities,
+      [
+        {
+          start: parseFloat(document.getElementById("peak1Start").value),
+          end: parseFloat(document.getElementById("peak1End").value),
+        },
+        {
+          start: parseFloat(document.getElementById("peak2Start").value),
+          end: parseFloat(document.getElementById("peak2End").value),
+        },
+      ],
+      [dBandWidthHeight / 100, gBandWidthHeight / 100],
+      method
+    );
+
+    const dPeakWavelength = topPeaks[0] ? topPeaks[0].wavelength.toFixed(1) : "N/A";
+    const gPeakWavelength = topPeaks[1] ? topPeaks[1].wavelength.toFixed(1) : "N/A";
+
     // Set individual checkbox state here
     tbodyElement.innerHTML += `
       <tr>
@@ -1030,6 +1153,8 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
         </td>
         <td style="padding: 5px;">${file.name}</td>
         <td style="padding: 5px; text-align: center;">${temp}</td>
+        <td style="padding: 5px; text-align: center;">${dPeakWavelength}</td>
+        <td style="padding: 5px; text-align: center;">${gPeakWavelength}</td>
         <td style="padding: 5px; text-align: center;">${hdHg}</td>
         <td style="padding: 5px; text-align: center;">${dWidth}</td>
         <td style="padding: 5px; text-align: center;">${gWidth}</td>
@@ -1435,7 +1560,7 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
             backgroundColor: 'red',
             pointRadius: 4,
             showLine: true,
-            tension: 0,
+            tension: 0.3,
             errorBars: {
               y: {
                 array: stdDevs.map(point => point.y),
@@ -1490,7 +1615,7 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
               backgroundColor: 'red',
               pointRadius: 4,
               showLine: true,
-              tension: 0,
+              tension: 0.3,
               errorBars: {
                 y: {
                   array: stdDevs.map(point => point.y),
@@ -1506,7 +1631,7 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
               backgroundColor: 'green',
               pointRadius: 4,
               showLine: true,
-              tension: 0,
+              tension: 0.3,
               errorBars: {
                 y: {
                   array: otherMethodStats.stdDevs.map(point => point.y),
