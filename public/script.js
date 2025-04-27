@@ -11,8 +11,8 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("analysisMethod").addEventListener("change", () => {
     // Sync with archaeo tab
     document.getElementById("archaeoAnalysisMethod").value = document.getElementById("analysisMethod").value;
-    updatePeak1Inputs();
-    updateDisplayedFile();
+    // Only trigger the update button click
+    document.getElementById("updateButton").click();
   });
 
   document.getElementById("archaeoAnalysisMethod").addEventListener("change", () => {
@@ -165,6 +165,7 @@ document.getElementById("fileInput").addEventListener("change", function (e) {
 });
 
 document.getElementById("updateButton").addEventListener("click", function () {
+  updatePeak1Inputs();
   updateDisplayedFile();
 });
 
@@ -1516,8 +1517,10 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
   individualChartTitle.style.cssText = 'text-align: center; margin: 0 0 10px 0';
   individualChartTitle.textContent = `${currentMethodName} Data & Averages`;
   const individualCanvas = document.createElement('canvas');
-  individualCanvas.style.cssText = 'width: 100%; height: 400px;';
   individualCanvas.id = `${method.replace(/[^a-zA-Z0-9]/g, '')}_Chart`;
+  individualCanvas.width = 620;
+  individualCanvas.height = 400;
+  individualCanvas.style.cssText = 'max-width: 620px; height: 400px;';
   individualChartContainer.appendChild(individualChartTitle);
   individualChartContainer.appendChild(individualCanvas);
   
@@ -1528,8 +1531,10 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
   comparisonChartTitle.style.cssText = 'text-align: center; margin: 0 0 10px 0';
   comparisonChartTitle.textContent = 'Method Comparison';
   const comparisonCanvas = document.createElement('canvas');
-  comparisonCanvas.style.cssText = 'width: 100%; height: 400px;';
   comparisonCanvas.id = `${method.replace(/[^a-zA-Z0-9]/g, '')}_ComparisonChart`;
+  comparisonCanvas.width = 620;
+  comparisonCanvas.height = 400;
+  comparisonCanvas.style.cssText = 'max-width: 620px; height: 400px;';
   comparisonChartContainer.appendChild(comparisonChartTitle);
   comparisonChartContainer.appendChild(comparisonCanvas);
   
@@ -1620,6 +1625,7 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
         }
       },
     });
+    window.statsCharts[chartId].resize();
 
     // Create comparison chart if other method data is available
     if (otherMethodStats) {
@@ -1691,8 +1697,9 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
           }
         },
       });
+      window.statsCharts[comparisonChartId].resize();
     }
-  }, 0);
+  }, 100);
 
   return plotsContainer;
 }
