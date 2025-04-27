@@ -2,6 +2,8 @@ let allFilesData = [];
 let displayedFileIndex = 0;
 let includedSamples = new Set(); // Track which samples are included in calculations
 
+if (!window.statsCharts) window.statsCharts = {};
+
 document.addEventListener("DOMContentLoaded", () => {
   updatePeak1Inputs();
 
@@ -1389,6 +1391,12 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
   const filteredData = data.filter(point => includedSamples.has(point.name));
   const filteredOtherData = otherMethodData ? otherMethodData.filter(point => includedSamples.has(point.name)) : null;
 
+  // Normalize temperature to number for both datasets
+  filteredData.forEach(point => point.temperature = Number(point.temperature));
+  if (filteredOtherData) {
+    filteredOtherData.forEach(point => point.temperature = Number(point.temperature));
+  }
+
   // Calculate means and standard deviations for current method
   const groupedData = {};
   filteredData.forEach(point => {
@@ -1534,11 +1542,22 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
 
   // Create the charts after a short delay to ensure the canvas elements are ready
   setTimeout(() => {
-    const ctx = document.getElementById(`${method.replace(/[^a-zA-Z0-9]/g, '')}_Chart`).getContext('2d');
-    const ctxComparison = document.getElementById(`${method.replace(/[^a-zA-Z0-9]/g, '')}_ComparisonChart`).getContext('2d');
+    const chartId = `${method.replace(/[^a-zA-Z0-9]/g, '')}_Chart`;
+    const comparisonChartId = `${method.replace(/[^a-zA-Z0-9]/g, '')}_ComparisonChart`;
 
-    // Create main chart with error bars
-    new Chart(ctx, {
+    const ctx = document.getElementById(chartId).getContext('2d');
+    const ctxComparison = document.getElementById(comparisonChartId).getContext('2d');
+
+    // Destroy previous chart instances if they exist
+    if (window.statsCharts[chartId]) {
+      window.statsCharts[chartId].destroy();
+    }
+    if (window.statsCharts[comparisonChartId]) {
+      window.statsCharts[comparisonChartId].destroy();
+    }
+
+    // Create and store new chart instances
+    window.statsCharts[chartId] = new Chart(ctx, {
       type: 'scatter',
       data: {
         datasets: [
@@ -1604,7 +1623,7 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
 
     // Create comparison chart if other method data is available
     if (otherMethodStats) {
-      new Chart(ctxComparison, {
+      window.statsCharts[comparisonChartId] = new Chart(ctxComparison, {
         type: 'scatter',
         data: {
           datasets: [
