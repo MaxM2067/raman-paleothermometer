@@ -501,10 +501,29 @@ function updatePlot(spectrumData) {
 
   allFilesData.forEach((fileData) => {
     ["simple", "voigt"].forEach((method) => {
-      const { topPeaks } = findTopPeaks(
+      // Calculate division point for this file
+      const divisionPoint = getDivisionPoint(
         fileData.spectrumData.wavelengths,
         fileData.spectrumData.intensities,
         intervals,
+        method
+      );
+
+      // Use broad intervals for Voigt, user intervals for Simple
+      let plotIntervals;
+      if (method === "voigt") {
+        plotIntervals = [
+          { start: 1150, end: divisionPoint },
+          { start: divisionPoint, end: 1700 }
+        ];
+      } else {
+        plotIntervals = intervals;
+      }
+
+      const { topPeaks } = findTopPeaks(
+        fileData.spectrumData.wavelengths,
+        fileData.spectrumData.intensities,
+        plotIntervals,
         widthPercentages,
         method,
       );
@@ -530,7 +549,7 @@ function updatePlot(spectrumData) {
     });
   });
 
-  // Calculate divisionPoint before using it
+  // Calculate divisionPoint for the current spectrum
   const divisionPoint = getDivisionPoint(
     spectrumData.wavelengths,
     spectrumData.intensities,
@@ -758,6 +777,7 @@ function findTopPeaks(
     processedIntensities = savitzkyGolaySmooth(intensities, 11, 2);
   }
 
+  // First find peaks using user intervals
   const approximatePeaks = intervals.map(({ start, end }, intervalIndex) => {
     const filteredIndices = wavelengths
       .map((wavelength, index) => ({ wavelength, index }))
@@ -778,6 +798,7 @@ function findTopPeaks(
     return peak.wavelength;
   });
 
+  // Calculate division point for broad intervals
   let divisionPoint = 1500;
   if (
     approximatePeaks.length === 2 &&
@@ -788,17 +809,14 @@ function findTopPeaks(
     const gPeakCenter = approximatePeaks[1];
 
     if (dPeakCenter < gPeakCenter) {
-      // Find valley between the two peaks
       const valleyIndices = wavelengths
         .map((w, i) => ({ w, i }))
         .filter(({ w }) => w >= dPeakCenter && w <= gPeakCenter)
         .map(({ i }) => i);
 
       if (valleyIndices.length > 0) {
-        // Use smoothed intensities for valley finding if method is voigt
         let valleyIntensities;
         if (method === "voigt") {
-          // Use Savitzky-Golay smoothed intensities for valley finding
           const smoothed = savitzkyGolaySmooth(intensities, 11, 2);
           valleyIntensities = valleyIndices.map(i => smoothed[i]);
         } else {
@@ -810,7 +828,6 @@ function findTopPeaks(
           ];
         divisionPoint = wavelengths[minIndex];
 
-        // Prevent overlap: enforce margin from both peak centers
         const minDistance = 50;
         divisionPoint = Math.max(
           dPeakCenter + minDistance,
@@ -820,23 +837,20 @@ function findTopPeaks(
     }
   }
 
+  // Define broad intervals for plotting
   const broadIntervals = [
     { start: 1150, end: divisionPoint },
     { start: divisionPoint, end: 1700 }
   ];
 
-  const constraints = [
-    { minWavelength: 1150, maxWavelength: divisionPoint },
-    { minWavelength: divisionPoint, maxWavelength: 1700 },
-  ];
-
-  const peaks = intervals.map((_, intervalIndex) => {
+  // Find and fit peaks using user intervals
+  const peaks = intervals.map((interval, intervalIndex) => {
     const filteredIndices = wavelengths
       .map((wavelength, index) => ({ wavelength, index }))
       .filter(
         (point) =>
-          point.wavelength >= constraints[intervalIndex].minWavelength &&
-          point.wavelength <= constraints[intervalIndex].maxWavelength,
+          point.wavelength >= interval.start &&
+          point.wavelength <= interval.end
       )
       .map((point) => point.index);
 
@@ -844,32 +858,29 @@ function findTopPeaks(
 
     const xData = filteredIndices.map((idx) => wavelengths[idx]);
     const yData = filteredIndices.map((idx) =>
-      method === "voigt" ? processedIntensities[idx] : intensities[idx],
+      method === "voigt" ? processedIntensities[idx] : intensities[idx]
     );
 
     if (method === "voigt") {
+      // Fit using user interval data
       const fitResult = fitPseudoVoigt(xData, yData, intervalIndex, canvasId);
-      const { A, mu, fwhm, leftX, rightX } = fitResult;
+      const { A, mu, sigma, gamma, eta, fwhm, leftX, rightX } = fitResult;
 
-      const fittedY = xData.map((x) =>
-        pseudoVoigt(x, A, mu, fitResult.sigma, fitResult.gamma, fitResult.eta),
+      // Generate fitted curve over broad range
+      const broadX = [];
+      const broadStart = broadIntervals[intervalIndex].start;
+      const broadEnd = broadIntervals[intervalIndex].end;
+      for (let x = broadStart; x <= broadEnd; x += 1) {
+        broadX.push(x);
+      }
+      const broadY = broadX.map((x) =>
+        pseudoVoigt(x, A, mu, sigma, gamma, eta)
       );
-      fittedCurves.push({ x: xData, y: fittedY });
+      fittedCurves.push({ x: broadX, y: broadY });
 
       return { wavelength: mu, intensity: A, fwhm, leftX, rightX };
     } else {
-      const initialIndices = wavelengths
-        .map((wavelength, index) => ({ wavelength, index }))
-        .filter(
-          (point) =>
-            point.wavelength >= intervals[intervalIndex].start &&
-            point.wavelength <= intervals[intervalIndex].end,
-        )
-        .map((point) => point.index);
-
-      if (initialIndices.length === 0) return null;
-
-      const filteredPoints = initialIndices.map((idx) => ({
+      const filteredPoints = filteredIndices.map((idx) => ({
         wavelength: wavelengths[idx],
         intensity: intensities[idx],
       }));
@@ -1076,11 +1087,22 @@ function fitPseudoVoigt(xData, yData, peakIndex, canvasId = "spectrumChart") {
   // Smooth the data before estimating the peak center
   const smoothedY = savitzkyGolaySmooth(yData, 11, 2);
 
-  // Always use the max in the current xData range for the initial guess
+  // Find max in smoothed data
   let maxY = Math.max(...smoothedY);
   let maxYIndex = smoothedY.indexOf(maxY);
   let muGuess = xData[maxYIndex];
   const AGuess = maxY;
+
+  // Also find max in raw data
+  let rawMaxY = Math.max(...yData);
+  let rawMaxYIndex = yData.indexOf(rawMaxY);
+  let rawMuGuess = xData[rawMaxYIndex];
+
+  // Log fitting interval and peak info
+  console.log(`--- Voigt Fit Debug (Peak ${peakIndex === 0 ? "D" : "G"}) ---`);
+  console.log(`Fitting interval: [${Math.min(...xData)}, ${Math.max(...xData)}]`);
+  console.log(`Smoothed max: y=${maxY} at x=${muGuess}`);
+  console.log(`Raw max: y=${rawMaxY} at x=${rawMuGuess}`);
 
   const expectedWidth = peakIndex === 0 ? 300 : 200;
   const sigmaGuess = expectedWidth / (2 * Math.sqrt(2 * Math.log(2)));
@@ -1142,16 +1164,6 @@ function fitPseudoVoigt(xData, yData, peakIndex, canvasId = "spectrumChart") {
   let [A, mu, sigma, gamma, eta] = params;
   let fwhm = approximateVoigtFWHM(sigma, gamma, eta);
 
-  const constraints =
-    peakIndex === 0
-      ? { minWavelength: 1200, maxWavelength: 1500 }
-      : { minWavelength: 1500, maxWavelength: 1700 };
-
-  // Constrain mu to remain fully within range
-  const muMin = constraints.minWavelength + fwhm / 2;
-  const muMax = constraints.maxWavelength - fwhm / 2;
-  mu = Math.max(muMin, Math.min(mu, muMax));
-
   // Calculate custom width at targetHeight - Use correct inputs based on canvas ID
   const percentage = peakIndex === 0
     ? parseFloat(document.getElementById(canvasId === "archaeoSpectrumChart" ? "archaeoDBandWidthHeight" : "dBandWidthHeight").value) / 100
@@ -1165,6 +1177,8 @@ function fitPseudoVoigt(xData, yData, peakIndex, canvasId = "spectrumChart") {
   const leftX = xLeft ?? mu - fwhm / 2;
   const rightX = xRight ?? mu + fwhm / 2;
   fwhm = rightX - leftX;
+
+  console.log(`Final fitted mu: ${mu}`);
 
   return { A, mu, sigma, gamma, eta, fwhm, leftX, rightX };
 }
@@ -1238,20 +1252,42 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
     const fileData = allFilesData.find(f => f.name === file.name);
     if (!fileData) return;
 
-    // Get peak wavelengths from the topPeaks array
+    // Get the user intervals
+    const intervals = [
+      {
+        start: parseFloat(document.getElementById("peak1Start").value),
+        end: parseFloat(document.getElementById("peak1End").value),
+      },
+      {
+        start: parseFloat(document.getElementById("peak2Start").value),
+        end: parseFloat(document.getElementById("peak2End").value),
+      },
+    ];
+
+    // Calculate division point
+    const divisionPoint = getDivisionPoint(
+      fileData.spectrumData.wavelengths,
+      fileData.spectrumData.intensities,
+      intervals,
+      method
+    );
+
+    // Use broad intervals for Voigt, user intervals for Simple
+    let plotIntervals;
+    if (method === "voigt") {
+      plotIntervals = [
+        { start: 1150, end: divisionPoint },
+        { start: divisionPoint, end: 1700 }
+      ];
+    } else {
+      plotIntervals = intervals;
+    }
+
+    // Get peak wavelengths from the topPeaks array using the same intervals as the plot
     const { topPeaks } = findTopPeaks(
       fileData.spectrumData.wavelengths,
       fileData.spectrumData.intensities,
-      [
-        {
-          start: parseFloat(document.getElementById("peak1Start").value),
-          end: parseFloat(document.getElementById("peak1End").value),
-        },
-        {
-          start: parseFloat(document.getElementById("peak2Start").value),
-          end: parseFloat(document.getElementById("peak2End").value),
-        },
-      ],
+      plotIntervals,
       [dBandWidthHeight / 100, gBandWidthHeight / 100],
       method
     );
