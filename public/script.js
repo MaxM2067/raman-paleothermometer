@@ -9,9 +9,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Add event listeners for method and mode selectors in both tabs
   document.getElementById("analysisMethod").addEventListener("change", () => {
-    // Sync with archaeo tab
-    document.getElementById("archaeoAnalysisMethod").value = document.getElementById("analysisMethod").value;
-
     // If Voigt is selected, set mode to broad and update intervals
     if (document.getElementById("analysisMethod").value === "voigt") {
       document.getElementById("peak1Mode").value = "broad";
@@ -23,40 +20,37 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("updateButton").click();
   });
 
-  document.getElementById("archaeoAnalysisMethod").addEventListener("change", () => {
-    // Sync with experimental tab
-    document.getElementById("analysisMethod").value = document.getElementById("archaeoAnalysisMethod").value;
-
-    // If Voigt is selected, set mode to broad and update intervals
-    if (document.getElementById("archaeoAnalysisMethod").value === "voigt") {
-      document.getElementById("archaeoPeak1Mode").value = "broad";
-      updateArchaeoPeak1Inputs();
+  // Add event listeners for smoothing/fitting checkboxes in both tabs
+  ["showSmoothing", "showFitting", "archaeoShowSmoothing", "archaeoShowFitting"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener("change", () => {
+        if (id.startsWith("archaeo")) {
+          updateArchaeoPlot();
+        } else {
+          updateDisplayedFile();
+        }
+      });
     }
+  });
 
-    updateArchaeoPlot();
+  // Add event listeners for width height inputs in both tabs
+  ["dBandWidthHeight", "gBandWidthHeight", "archaeoDBandWidthHeight", "archaeoGBandWidthHeight"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener("input", () => {
+        if (id.startsWith("archaeo")) {
+          updateArchaeoPlot();
+        } else {
+          updateDisplayedFile();
+        }
+      });
+    }
   });
 
   document.getElementById("peak1Mode").addEventListener("change", () => {
-    // Sync with archaeo tab
-    document.getElementById("archaeoPeak1Mode").value = document.getElementById("peak1Mode").value;
     updatePeak1Inputs();
     updateDisplayedFile();
-  });
-
-  document.getElementById("archaeoPeak1Mode").addEventListener("change", () => {
-    // Sync with experimental tab
-    document.getElementById("peak1Mode").value = document.getElementById("archaeoPeak1Mode").value;
-    updateArchaeoPeak1Inputs();
-    updateArchaeoPlot();
-  });
-
-  // Add event listeners for width height inputs in archaeo tab
-  document.getElementById("archaeoDBandWidthHeight").addEventListener("input", () => {
-    updateArchaeoPlot();
-  });
-
-  document.getElementById("archaeoGBandWidthHeight").addEventListener("input", () => {
-    updateArchaeoPlot();
   });
 
   // Add navigation button event listeners for experimental tab
@@ -90,16 +84,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (selector.selectedIndex < selector.options.length - 1) {
       selector.selectedIndex++;
       updateArchaeoPlot();
-    }
-  });
-
-  // Add listeners for smoothing/fitting checkboxes
-  ["showSmoothing", "showFitting"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.addEventListener("change", () => {
-        updateDisplayedFile();
-      });
     }
   });
 });
@@ -215,6 +199,78 @@ function updateDisplayedFile() {
     spectrumData.intensities.slice(0, 5),
   );
   updatePlot(spectrumData);
+
+  // Update archaeological tab's calibration charts if it's visible
+  if (document.getElementById("archaeologicalSection").style.display !== "none") {
+    const method = document.getElementById("analysisMethod").value;
+    const intervals = [
+      {
+        start: parseFloat(document.getElementById("peak1Start").value),
+        end: parseFloat(document.getElementById("peak1End").value),
+      },
+      {
+        start: parseFloat(document.getElementById("peak2Start").value),
+        end: parseFloat(document.getElementById("peak2End").value),
+      },
+    ];
+    const dBandWidthHeight = parseFloat(document.getElementById("dBandWidthHeight").value);
+    const gBandWidthHeight = parseFloat(document.getElementById("gBandWidthHeight").value);
+    const widthPercentages = [dBandWidthHeight / 100, gBandWidthHeight / 100];
+
+    const resultsByMethod = {
+      simple: [],
+      voigt: [],
+    };
+
+    allFilesData.forEach((fileData) => {
+      ["simple", "voigt"].forEach((method) => {
+        const divisionPoint = getDivisionPoint(
+          fileData.spectrumData.wavelengths,
+          fileData.spectrumData.intensities,
+          intervals,
+          method
+        );
+
+        let plotIntervals;
+        if (method === "voigt") {
+          plotIntervals = [
+            { start: 1150, end: divisionPoint },
+            { start: divisionPoint, end: 1700 }
+          ];
+        } else {
+          plotIntervals = intervals;
+        }
+
+        const { topPeaks } = findTopPeaks(
+          fileData.spectrumData.wavelengths,
+          fileData.spectrumData.intensities,
+          plotIntervals,
+          widthPercentages,
+          method,
+        );
+
+        const d = topPeaks[0] || {};
+        const g = topPeaks[1] || {};
+        const hdHg = d.height && g.height && g.height !== 0 ? d.height / g.height : null;
+        const wdWg = d.width && g.width && g.width !== 0 ? d.width / g.width : null;
+
+        const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
+        const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
+
+        resultsByMethod[method].push({
+          name: fileData.name,
+          temperature,
+          hdHg,
+          dWidth: d.width || null,
+          gWidth: g.width || null,
+          wdWg,
+        });
+      });
+    });
+
+    // Update calibration charts with Voigt method data
+    generateCalibrationCharts(resultsByMethod.voigt, "voigt");
+  }
 }
 
 let archaeologicalFiles = [];
@@ -270,57 +326,25 @@ function updateArchaeoPlot() {
 
   const { spectrumData } = archaeologicalFiles[selectedArchaeoIndex];
 
-  // Use archaeo controls instead of experimental ones
-  const method = document.getElementById("archaeoAnalysisMethod").value;
+  // Use experimental controls instead of archaeo ones
+  const method = document.getElementById("analysisMethod").value;
 
   const intervals = [
     {
-      start: parseFloat(document.getElementById("archaeoPeak1Start").value),
-      end: parseFloat(document.getElementById("archaeoPeak1End").value),
+      start: parseFloat(document.getElementById("peak1Start").value),
+      end: parseFloat(document.getElementById("peak1End").value),
     },
     {
-      start: parseFloat(document.getElementById("archaeoPeak2Start").value),
-      end: parseFloat(document.getElementById("archaeoPeak2End").value),
+      start: parseFloat(document.getElementById("peak2Start").value),
+      end: parseFloat(document.getElementById("peak2End").value),
     },
   ];
 
-  const dBandWidthHeight = parseFloat(document.getElementById("archaeoDBandWidthHeight").value);
-  const gBandWidthHeight = parseFloat(document.getElementById("archaeoGBandWidthHeight").value);
+  const dBandWidthHeight = parseFloat(document.getElementById("dBandWidthHeight").value);
+  const gBandWidthHeight = parseFloat(document.getElementById("gBandWidthHeight").value);
   const widthPercentages = [dBandWidthHeight / 100, gBandWidthHeight / 100];
 
-  const resultsByMethod = {
-    simple: [],
-    voigt: [],
-  };
-
-  archaeologicalFiles.forEach((fileData) => {
-    ["simple", "voigt"].forEach((methodType) => {
-      const { topPeaks } = findTopPeaks(
-        fileData.spectrumData.wavelengths,
-        fileData.spectrumData.intensities,
-        intervals,
-        widthPercentages,
-        methodType,
-        "archaeoSpectrumChart"
-      );
-
-      const d = topPeaks[0] || {};
-      const g = topPeaks[1] || {};
-      const hdHg = d.height && g.height && g.height !== 0 ? d.height / g.height : null;
-      const wdWg = d.width && g.width && g.width !== 0 ? d.width / g.width : null;
-
-      resultsByMethod[methodType].push({
-        name: fileData.name,
-        temperature: "", // Empty for now, will be calculated later
-        hdHg,
-        dWidth: d.width || null,
-        gWidth: g.width || null,
-        wdWg,
-      });
-    });
-  });
-
-  // Calculate divisionPoint before using it
+  // Calculate division point for broad intervals
   const divisionPoint = getDivisionPoint(
     spectrumData.wavelengths,
     spectrumData.intensities,
@@ -360,12 +384,92 @@ function updateArchaeoPlot() {
 
   // Display derived temperatures table
   displayDerivedTemperatures(
-    resultsByMethod[method],
+    archaeologicalFiles.map(fileData => {
+      const { topPeaks } = findTopPeaks(
+        fileData.spectrumData.wavelengths,
+        fileData.spectrumData.intensities,
+        plotIntervals,
+        widthPercentages,
+        method,
+        "archaeoSpectrumChart"
+      );
+
+      const d = topPeaks[0] || {};
+      const g = topPeaks[1] || {};
+      const hdHg = d.height && g.height && g.height !== 0 ? d.height / g.height : null;
+      const wdWg = d.width && g.width && g.width !== 0 ? d.width / g.width : null;
+
+      return {
+        name: fileData.name,
+        hdHg,
+        dWidth: d.width || null,
+        gWidth: g.width || null,
+        wdWg,
+        dPeak: d.wavelength || null,
+        gPeak: g.wavelength || null,
+      };
+    }),
     method,
     dBandWidthHeight,
-    gBandWidthHeight,
-    resultsByMethod
+    gBandWidthHeight
   );
+
+  // Generate calibration charts using Voigt method data from experimental tab
+  if (allFilesData.length > 0) {
+    const resultsByMethod = {
+      simple: [],
+      voigt: [],
+    };
+
+    allFilesData.forEach((fileData) => {
+      ["simple", "voigt"].forEach((method) => {
+        const divisionPoint = getDivisionPoint(
+          fileData.spectrumData.wavelengths,
+          fileData.spectrumData.intensities,
+          intervals,
+          method
+        );
+
+        let plotIntervals;
+        if (method === "voigt") {
+          plotIntervals = [
+            { start: 1150, end: divisionPoint },
+            { start: divisionPoint, end: 1700 }
+          ];
+        } else {
+          plotIntervals = intervals;
+        }
+
+        const { topPeaks } = findTopPeaks(
+          fileData.spectrumData.wavelengths,
+          fileData.spectrumData.intensities,
+          plotIntervals,
+          widthPercentages,
+          method,
+        );
+
+        const d = topPeaks[0] || {};
+        const g = topPeaks[1] || {};
+        const hdHg = d.height && g.height && g.height !== 0 ? d.height / g.height : null;
+        const wdWg = d.width && g.width && g.width !== 0 ? d.width / g.width : null;
+
+        const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
+        const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
+
+        resultsByMethod[method].push({
+          name: fileData.name,
+          temperature,
+          hdHg,
+          dWidth: d.width || null,
+          gWidth: g.width || null,
+          wdWg,
+        });
+      });
+    });
+
+    // Generate calibration charts using Voigt method data
+    generateCalibrationCharts(resultsByMethod.voigt, "voigt");
+  }
 }
 
 function displayDerivedTemperatures(allPeaks, method, dBandWidthHeight, gBandWidthHeight, resultsByMethod) {
@@ -387,6 +491,8 @@ function displayDerivedTemperatures(allPeaks, method, dBandWidthHeight, gBandWid
         <tr style="background-color: #f2f2f2;">
           <th style="padding: 5px; text-align: left;">Name</th>
           <th style="padding: 5px; text-align: center;">HD/HG</th>
+          <th style="padding: 5px; text-align: center;">D Peak (cm⁻¹)</th>
+          <th style="padding: 5px; text-align: center;">G Peak (cm⁻¹)</th>
           <th>D width ${dBandWidthHeight + "%H"}</th>
           <th>G width ${gBandWidthHeight + "%H"}</th>
           <th style="padding: 5px; text-align: center;">WD/WG</th>
@@ -407,11 +513,15 @@ function displayDerivedTemperatures(allPeaks, method, dBandWidthHeight, gBandWid
     const dWidth = file.dWidth != null ? file.dWidth.toFixed(2) : "N/A";
     const gWidth = file.gWidth != null ? file.gWidth.toFixed(2) : "N/A";
     const wdWg = file.wdWg != null ? file.wdWg.toFixed(2) : "N/A";
+    const dPeak = file.dPeak != null ? file.dPeak.toFixed(1) : "N/A";
+    const gPeak = file.gPeak != null ? file.gPeak.toFixed(1) : "N/A";
 
     tbodyElement.innerHTML += `
       <tr>
         <td style="padding: 5px;">${file.name}</td>
         <td style="padding: 5px; text-align: center;">${hdHg}</td>
+        <td style="padding: 5px; text-align: center;">${dPeak}</td>
+        <td style="padding: 5px; text-align: center;">${gPeak}</td>
         <td style="padding: 5px; text-align: center;">${dWidth}</td>
         <td style="padding: 5px; text-align: center;">${gWidth}</td>
         <td style="padding: 5px; text-align: center;">${wdWg}</td>
@@ -428,13 +538,19 @@ function updatePeak1Inputs() {
   const mode = document.getElementById("peak1Mode").value;
   const peak1StartInput = document.getElementById("peak1Start");
   const peak1EndInput = document.getElementById("peak1End");
+  const peak2StartInput = document.getElementById("peak2Start");
+  const peak2EndInput = document.getElementById("peak2End");
 
   if (mode === "broad") {
     peak1StartInput.value = 1300;
     peak1EndInput.value = 1450;
+    peak2StartInput.value = 1585;
+    peak2EndInput.value = 1620;
   } else if (mode === "conventional") {
     peak1StartInput.value = 1349;
     peak1EndInput.value = 1352;
+    peak2StartInput.value = 1590;
+    peak2EndInput.value = 1610;
   }
 
   // 👇 Apply default 50% height when using Voigt method
@@ -446,27 +562,6 @@ function updatePeak1Inputs() {
 
   if (allFilesData.length > 0) {
     updateDisplayedFile();
-  }
-}
-
-function updateArchaeoPeak1Inputs() {
-  const mode = document.getElementById("archaeoPeak1Mode").value;
-  const peak1StartInput = document.getElementById("archaeoPeak1Start");
-  const peak1EndInput = document.getElementById("archaeoPeak1End");
-
-  if (mode === "broad") {
-    peak1StartInput.value = 1300;
-    peak1EndInput.value = 1420;
-  } else if (mode === "conventional") {
-    peak1StartInput.value = 1349;
-    peak1EndInput.value = 1352;
-  }
-
-  // Apply default 50% height when using Voigt method
-  const analysisMethod = document.getElementById("archaeoAnalysisMethod").value;
-  if (analysisMethod === "voigt") {
-    document.getElementById("archaeoDBandWidthHeight").value = 50;
-    document.getElementById("archaeoGBandWidthHeight").value = 50;
   }
 }
 
@@ -624,7 +719,7 @@ function plotSpectrum(
   intervals,
   widthPercentages,
   method,
-  canvasId = "spectrumChart", // ✅ This is key
+  canvasId = "spectrumChart",
 ) {
   const ctx = document.getElementById(canvasId).getContext("2d");
   if (!window.myCharts) window.myCharts = {};
@@ -632,8 +727,8 @@ function plotSpectrum(
     window.myCharts[canvasId].destroy();
   }
 
-  const showSmoothing = document.getElementById("showSmoothing")?.checked ?? true;
-  const showFitting = document.getElementById("showFitting")?.checked ?? true;
+  const showSmoothing = document.getElementById(canvasId === "archaeoSpectrumChart" ? "archaeoShowSmoothing" : "showSmoothing")?.checked ?? true;
+  const showFitting = document.getElementById(canvasId === "archaeoSpectrumChart" ? "archaeoShowFitting" : "showFitting")?.checked ?? true;
 
   const datasets = [
     {
@@ -674,7 +769,7 @@ function plotSpectrum(
         x,
         y: smoothed[i],
       })),
-      borderColor: "rgba(0,0,0,1)", // black, 100% transparent
+      borderColor: "rgba(0,0,0,1)",
       borderWidth: 2,
       pointRadius: 0,
       showLine: true,
@@ -1167,10 +1262,6 @@ function fitPseudoVoigt(xData, yData, peakIndex, canvasId = "spectrumChart") {
           testParams[4] = Math.max(0.2, Math.min(0.9, testParams[4]));
         }
 
-        // Remove artificial width limits
-        // if (i === 2) testParams[2] = Math.min(testParams[2], 100);
-        // if (i === 3) testParams[3] = Math.min(testParams[3], 100);
-
         let error = 0;
         for (let j = 0; j < xData.length; j++) {
           const yFit = pseudoVoigt(xData[j], ...testParams);
@@ -1197,10 +1288,10 @@ function fitPseudoVoigt(xData, yData, peakIndex, canvasId = "spectrumChart") {
   let [A, mu, sigma, gamma, eta] = params;
   let fwhm = approximateVoigtFWHM(sigma, gamma, eta);
 
-  // Calculate custom width at targetHeight - Use correct inputs based on canvas ID
+  // Calculate custom width at targetHeight - Use experimental tab inputs
   const percentage = peakIndex === 0
-    ? parseFloat(document.getElementById(canvasId === "archaeoSpectrumChart" ? "archaeoDBandWidthHeight" : "dBandWidthHeight").value) / 100
-    : parseFloat(document.getElementById(canvasId === "archaeoSpectrumChart" ? "archaeoGBandWidthHeight" : "gBandWidthHeight").value) / 100;
+    ? parseFloat(document.getElementById("dBandWidthHeight").value) / 100
+    : parseFloat(document.getElementById("gBandWidthHeight").value) / 100;
 
   const targetHeight = A * percentage;
   
@@ -1961,4 +2052,137 @@ function getDivisionPoint(wavelengths, intensities, intervals, method) {
     }
   }
   return divisionPoint;
+}
+
+function generateCalibrationCharts(data, method) {
+  if (!data || data.length === 0) return;
+
+  // Filter data to only include checked samples
+  const filteredData = data.filter(point => includedSamples.has(point.name));
+
+  // Group data by temperature
+  const groupedData = {};
+  filteredData.forEach(point => {
+    if (!groupedData[point.temperature]) {
+      groupedData[point.temperature] = [];
+    }
+    groupedData[point.temperature].push(point);
+  });
+
+  // Calculate means and standard deviations for each parameter
+  const parameters = ['hdHg', 'dWidth', 'gWidth', 'wdWg'];
+  const stats = {};
+  
+  parameters.forEach(param => {
+    stats[param] = Object.entries(groupedData).map(([temp, points]) => {
+      const values = points.map(p => p[param]).filter(v => v != null);
+      if (values.length === 0) return null;
+      
+      const mean = values.reduce((a, b) => a + b) / values.length;
+      const stdDev = Math.sqrt(
+        values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length
+      );
+      
+      return {
+        x: parseFloat(temp),
+        y: mean,
+        stdDev
+      };
+    }).filter(point => point != null);
+  });
+
+  // Create container for all plots
+  const container = document.getElementById('archaeoCalibrationPlots');
+  container.innerHTML = '';
+
+  // Create a flex container for the grid layout
+  const gridContainer = document.createElement('div');
+  gridContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 20px; justify-content: center;';
+  container.appendChild(gridContainer);
+
+  // Create individual chart containers
+  parameters.forEach((param, index) => {
+    const chartContainer = document.createElement('div');
+    chartContainer.style.cssText = 'flex: 0 1 calc(50% - 10px); min-width: 300px; margin-bottom: 20px;';
+    
+    const title = document.createElement('h4');
+    title.style.cssText = 'text-align: center; margin: 0 0 10px 0';
+    title.textContent = param === 'hdHg' ? 'HD/HG Ratio' :
+                       param === 'dWidth' ? 'D Width' :
+                       param === 'gWidth' ? 'G Width' : 'WD/WG Ratio';
+    
+    const canvas = document.createElement('canvas');
+    canvas.id = `archaeoCalibration_${param}`;
+    canvas.width = 620;
+    canvas.height = 400;
+    canvas.style.cssText = 'width: 100%; height: 400px;';
+    
+    chartContainer.appendChild(title);
+    chartContainer.appendChild(canvas);
+    gridContainer.appendChild(chartContainer);
+
+    // Create the chart after a short delay to ensure canvas is ready
+    setTimeout(() => {
+      const ctx = canvas.getContext('2d');
+      
+      // Destroy previous chart if it exists
+      if (window.statsCharts[canvas.id]) {
+        window.statsCharts[canvas.id].destroy();
+      }
+
+      // Create new chart
+      window.statsCharts[canvas.id] = new Chart(ctx, {
+        type: 'scatter',
+        data: {
+          datasets: [
+            {
+              label: 'Calibration Data',
+              data: stats[param].map(point => ({
+                x: point.x,
+                y: point.y
+              })),
+              borderColor: 'red',
+              backgroundColor: 'red',
+              pointRadius: 4,
+              showLine: true,
+              tension: 0.3,
+              errorBars: {
+                y: {
+                  array: stats[param].map(point => point.stdDev),
+                  color: 'rgba(255, 0, 0, 0.5)',
+                  width: 2
+                }
+              }
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Temperature' }
+            },
+            y: {
+              type: 'linear',
+              title: { display: true, text: title.textContent }
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const index = context.dataIndex;
+                  return [
+                    `Average: ${stats[param][index].y.toFixed(3)}`,
+                    `± SD: ${stats[param][index].stdDev.toFixed(3)}`
+                  ];
+                }
+              }
+            }
+          }
+        }
+      });
+    }, 100);
+  });
 }

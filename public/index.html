@@ -182,117 +182,26 @@
         <button id="archaeoPrevFile" class="navButton">&lt;&lt;</button>
         <button id="archaeoNextFile" class="navButton">&gt;&gt;</button>
       </div>
-      <canvas id="archaeoSpectrumChart"></canvas>
 
-      <!-- Duplicated Controls Section -->
-      <div
-        id="archaeoIntervalInputs" 
-        style="margin-top: 20px; font-family: Arial, sans-serif"
-      >
-        <div style="margin-bottom: 10px">
-          <label>
-            Analysis Method:
-            <select id="archaeoAnalysisMethod"> 
-              <option value="simple" selected>Simple (Moving Average)</option>
-              <option value="voigt">Voigt + Savitzky-Golay</option>
-            </select>
-          </label>
-        </div>
-
-        <h3 style="margin: 0 0 10px 0">Search Intervals for Peaks</h3>
-
-        <div style="margin-bottom: 10px">
-          <label>
-            Mode:
-            <select id="archaeoPeak1Mode"> 
-              <option value="broad" selected>Broad</option>
-              <option value="conventional">Conventional</option>
-            </select>
-          </label>
-        </div>
-
-        <table style="width: 100%; max-width: 600px; border-collapse: collapse; margin-bottom: 10px;">
-          <thead>
-            <tr style="background-color: #f2f2f2">
-              <th style="padding: 5px; text-align: center">Band</th>
-              <th style="padding: 5px; text-align: center">Start</th>
-              <th style="padding: 5px; text-align: center">End</th>
-              <th style="padding: 5px; text-align: center">Width %</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style="padding: 5px; text-align: center">D band</td>
-              <td style="padding: 5px; text-align: center">
-                <input
-                  type="number"
-                  id="archaeoPeak1Start" 
-                  value="1300"
-                  style="width: 80px"
-                />
-              </td>
-              <td style="padding: 5px; text-align: center">
-                <input
-                  type="number"
-                  id="archaeoPeak1End" 
-                  value="1400"
-                  style="width: 80px"
-                />
-              </td>
-              <td style="padding: 5px; text-align: center">
-                <input
-                  type="number"
-                  id="archaeoDBandWidthHeight" 
-                  value="80"
-                  min="0"
-                  max="100"
-                  step="1"
-                  style="width: 60px"
-                />%
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 5px; text-align: center">G band</td>
-              <td style="padding: 5px; text-align: center">
-                <input
-                  type="number"
-                  id="archaeoPeak2Start" 
-                  value="1590"
-                  style="width: 80px"
-                />
-              </td>
-              <td style="padding: 5px; text-align: center">
-                <input
-                  type="number"
-                  id="archaeoPeak2End" 
-                  value="1610"
-                  style="width: 80px"
-                />
-              </td>
-              <td style="padding: 5px; text-align: center">
-                <input
-                  type="number"
-                  id="archaeoGBandWidthHeight" 
-                  value="60"
-                  min="0"
-                  max="100"
-                  step="1"
-                  style="width: 60px"
-                />%
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <!-- Duplicated and Renamed Update Button -->
-        <button id="archaeoUpdateButton" style="padding: 5px 20px"> 
-          Update Peaks
-        </button>
+      <!-- Add checkboxes for smoothing and fitting -->
+      <div style="margin-bottom: 10px; font-family: Arial, sans-serif;">
+        <label>
+          <input type="checkbox" id="archaeoShowSmoothing" checked>
+          Show Smoothing (SG)
+        </label>
+        <label style="margin-left: 20px;">
+          <input type="checkbox" id="archaeoShowFitting" checked>
+          Show Fitting Curve
+        </label>
       </div>
-      <!-- End Duplicated Controls -->
+      <canvas id="archaeoSpectrumChart"></canvas>
 
       <div id="derivedTemperatureTable" style="margin-top: 30px"></div>
       <div id="archaeoStats" style="margin-top: 40px"></div>
+      <div id="archaeoCalibrationCharts" style="margin-top: 40px; border-top: 1px solid #ccc; padding-top: 20px;">
+        <h3>Calibration Curves</h3>
+        <div id="archaeoCalibrationPlots"></div>
+      </div>
     </div>
 
     <script src="/script.js"></script>
