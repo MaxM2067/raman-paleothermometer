@@ -15,6 +15,7 @@ This web-based application is designed to analyze Raman spectroscopy data from c
   - Plot calibration curves with individual data, averages, standard deviations, and trendlines
   - Compare Simple vs Voigt results with statistical significance testing
   - Selectively include/exclude samples using checkboxes
+  - Toggle visibility of smoothing and fitting curves
 
 - **Archaeological Samples Tab**
   - Upload multiple spectra of samples with unknown firing temperature
@@ -23,16 +24,20 @@ This web-based application is designed to analyze Raman spectroscopy data from c
   - Derive temperature ranges based on calibration curves from experimental data
   - Show spectra and fitted peaks for each sample
   - Display derived temperatures in a summary table
-  - Overlay archaeological points on and calibration charts 
+  - Overlay archaeological points on calibration charts 
 
 ### 📈 Plotting & Interactivity
 - Full spectrum plot with:
   - Detected peak centers
   - Width lines at user-defined % height
   - Voigt fitted curves when applicable
+  - Savitzky-Golay smoothing overlay
 - Independent charts for each tab
 - Chart.js based visualizations with hover tooltips and interactive legends
 - Method-specific data visualization (Simple/Voigt) in statistical plots
+- Error bars showing standard deviations
+- Peak labels with wavelength values
+- Width labels showing FWHM values
 
 ### ⚙️ Custom Controls
 - User-selectable peak intervals and search width height (% of peak)
@@ -42,6 +47,7 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 - Sample inclusion/exclusion controls for statistical analysis
 - Button to re-analyze spectra
 - Visual tab switching with active-state styling
+- Toggle switches for smoothing and fitting visualization
 
 ### 📊 Statistics and Data Analysis
 - Grouped results by firing temperature
@@ -55,12 +61,14 @@ This web-based application is designed to analyze Raman spectroscopy data from c
   - G Width
   - WD/WG Ratio
 - Method comparison charts showing both Simple and Voigt results
+- Detailed statistical tables with temperature-wise breakdowns
 
 ### 🔄 Synchronization Features
 - Synchronized method selection between tabs
 - Synchronized mode selection (Broad/Conventional)
 - Automatic parameter updates when changing methods
 - Default value restoration for different modes
+- Consistent width percentage settings across tabs
 
 ### 🧮 Data Processing
 - Savitzky-Golay smoothing for Voigt method
@@ -68,12 +76,16 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 - Width calculation at user-defined heights
 - Automatic valley detection between peaks
 - Temperature extraction from filenames
+- Pseudo-Voigt function fitting for peak analysis
+- Matrix operations for Savitzky-Golay coefficients
+- Linear interpolation for precise width measurements
 
 ## Technologies Used
 
 - HTML5 + CSS3 (custom styling)
 - JavaScript (Vanilla)
 - Chart.js with error bars plugin
+- Chart.js Annotation plugin
 - FileReader API (for .txt file loading)
 - Client-side peak detection, fitting, and statistical analysis
 
@@ -89,15 +101,19 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 2. Use checkboxes to include/exclude specific samples from analysis
 3. Switch between Simple and Voigt methods to compare results
 4. Navigate through files using dropdown or navigation buttons
-5. Switch to the archaeological tab to upload unknowns
-6. Use plots and tables to interpret thermal history
-7. Export or analyze results using the statistical tools provided
+5. Toggle smoothing and fitting visualization as needed
+6. Switch to the archaeological tab to upload unknowns
+7. Use plots and tables to interpret thermal history
+8. Export or analyze results using the statistical tools provided
 
 ## Notes
 
 - Designed for in-browser use (no server needed)
 - Easy to port into Cursor or VSCode environments
-- Lightweight, dependency-free except for Chart.js
+- Lightweight, dependency-free except for Chart.js and its plugins
 - Extensible for baseline correction, export, and trendline fitting
 - Robust error handling and data validation
 - Synchronized controls for consistent analysis across tabs
+- Automatic peak detection and fitting with configurable parameters
+- Statistical analysis with significance testing
+- Interactive data visualization with error bars

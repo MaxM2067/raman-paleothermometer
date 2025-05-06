@@ -650,6 +650,7 @@ function plotSpectrum(
     },
   ];
 
+  // Only draw the solid fit lines for the fitted curves
   if (showFitting && method === "voigt" && fittedCurves.length > 0) {
     fittedCurves.forEach((curve, index) => {
       datasets.push({
@@ -660,6 +661,7 @@ function plotSpectrum(
         pointRadius: 0,
         showLine: true,
         tension: 0,
+        order: 1,
       });
     });
   }
@@ -712,6 +714,27 @@ function plotSpectrum(
         yMax: peak.widthHeight,
         borderColor: index === 0 ? "red" : "green",
         borderWidth: 1,
+      };
+      // Add width label annotation
+      annotations[`widthLabel${index}`] = {
+        type: "label",
+        xValue: (peak.widthLeftX + peak.widthRightX) / 2,
+        yValue: peak.widthHeight,
+        backgroundColor: "rgba(255,255,255,0.8)",
+        borderColor: index === 0 ? "red" : "green",
+        borderWidth: 0,
+        color: index === 0 ? "red" : "green",
+        font: {
+          size: 13,
+          weight: "bold"
+        },
+        content: [
+          `${index === 0 ? "D" : "G"} width: ${(peak.width).toFixed(1)}`
+        ],
+        xAdjust: 0,
+        yAdjust: 18,
+        textAlign: "center",
+        display: true
       };
     }
     annotations[`peakLabel${index}`] = {
@@ -837,14 +860,15 @@ function findTopPeaks(
     }
   }
 
-  // Define broad intervals for plotting
+  // Define broad intervals for fitting only
   const broadIntervals = [
     { start: 1150, end: divisionPoint },
     { start: divisionPoint, end: 1700 }
   ];
 
-  // Find and fit peaks using user intervals
+  // Find and fit peaks
   const peaks = intervals.map((interval, intervalIndex) => {
+    // 1. Find peak center in user interval
     const filteredIndices = wavelengths
       .map((wavelength, index) => ({ wavelength, index }))
       .filter(
@@ -856,30 +880,38 @@ function findTopPeaks(
 
     if (filteredIndices.length === 0) return null;
 
-    const xData = filteredIndices.map((idx) => wavelengths[idx]);
-    const yData = filteredIndices.map((idx) =>
+    // Find peak center
+    const xUser = filteredIndices.map((idx) => wavelengths[idx]);
+    const yUser = filteredIndices.map((idx) =>
       method === "voigt" ? processedIntensities[idx] : intensities[idx]
     );
+    let peakCenter = xUser[yUser.indexOf(Math.max(...yUser))];
 
     if (method === "voigt") {
-      // Fit using user interval data
-      const fitResult = fitPseudoVoigt(xData, yData, intervalIndex, canvasId);
+      // 2. Fit using broad interval data
+      const broad = broadIntervals[intervalIndex];
+      const broadIndices = wavelengths
+        .map((w, i) => ({ w, i }))
+        .filter(({ w }) => w >= broad.start && w <= broad.end)
+        .map(({ i }) => i);
+      const xBroad = broadIndices.map(i => wavelengths[i]);
+      const yBroad = broadIndices.map(i => processedIntensities[i]);
+      const fitResult = fitPseudoVoigt(xBroad, yBroad, intervalIndex, canvasId);
       const { A, mu, sigma, gamma, eta, fwhm, leftX, rightX } = fitResult;
 
-      // Generate fitted curve over broad range
-      const broadX = [];
-      const broadStart = broadIntervals[intervalIndex].start;
-      const broadEnd = broadIntervals[intervalIndex].end;
-      for (let x = broadStart; x <= broadEnd; x += 1) {
-        broadX.push(x);
+      // Generate fitted curve over the full range 1000-1900 for both D and G
+      const fullX = [];
+      for (let x = 1000; x <= 1900; x += 1) {
+        fullX.push(x);
       }
-      const broadY = broadX.map((x) =>
+      const fullY = fullX.map((x) =>
         pseudoVoigt(x, A, mu, sigma, gamma, eta)
       );
-      fittedCurves.push({ x: broadX, y: broadY });
+      fittedCurves.push({ x: fullX, y: fullY });
 
       return { wavelength: mu, intensity: A, fwhm, leftX, rightX };
     } else {
+      // Simple method: fit and width in user interval
       const filteredPoints = filteredIndices.map((idx) => ({
         wavelength: wavelengths[idx],
         intensity: intensities[idx],
@@ -1170,9 +1202,12 @@ function fitPseudoVoigt(xData, yData, peakIndex, canvasId = "spectrumChart") {
     : parseFloat(document.getElementById(canvasId === "archaeoSpectrumChart" ? "archaeoGBandWidthHeight" : "gBandWidthHeight").value) / 100;
 
   const targetHeight = A * percentage;
+  // Use a broad search range for width calculation (e.g., 400 cm⁻¹)
   const { xLeft, xRight } = findWidthAtHeightVoigt(
     [A, mu, sigma, gamma, eta],
     targetHeight,
+    400, // searchRange
+    0.5
   );
   const leftX = xLeft ?? mu - fwhm / 2;
   const rightX = xRight ?? mu + fwhm / 2;
