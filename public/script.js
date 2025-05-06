@@ -1136,7 +1136,8 @@ function fitPseudoVoigt(xData, yData, peakIndex, canvasId = "spectrumChart") {
   console.log(`Smoothed max: y=${maxY} at x=${muGuess}`);
   console.log(`Raw max: y=${rawMaxY} at x=${rawMuGuess}`);
 
-  const expectedWidth = peakIndex === 0 ? 300 : 200;
+  // Adjust initial guesses based on peak type
+  const expectedWidth = peakIndex === 0 ? 300 : 200; // D peak typically wider than G peak
   const sigmaGuess = expectedWidth / (2 * Math.sqrt(2 * Math.log(2)));
   const gammaGuess = expectedWidth / 2;
   const etaGuess = 0.7;
@@ -1166,9 +1167,9 @@ function fitPseudoVoigt(xData, yData, peakIndex, canvasId = "spectrumChart") {
           testParams[4] = Math.max(0.2, Math.min(0.9, testParams[4]));
         }
 
-        // Clamp gamma and sigma to max width
-        if (i === 2) testParams[2] = Math.min(testParams[2], 100);
-        if (i === 3) testParams[3] = Math.min(testParams[3], 100);
+        // Remove artificial width limits
+        // if (i === 2) testParams[2] = Math.min(testParams[2], 100);
+        // if (i === 3) testParams[3] = Math.min(testParams[3], 100);
 
         let error = 0;
         for (let j = 0; j < xData.length; j++) {
@@ -1202,18 +1203,24 @@ function fitPseudoVoigt(xData, yData, peakIndex, canvasId = "spectrumChart") {
     : parseFloat(document.getElementById(canvasId === "archaeoSpectrumChart" ? "archaeoGBandWidthHeight" : "gBandWidthHeight").value) / 100;
 
   const targetHeight = A * percentage;
-  // Use a broad search range for width calculation (e.g., 400 cm⁻¹)
+  
+  // Increase search range for D peak to ensure we find the full width
+  const searchRange = peakIndex === 0 ? 600 : 400; // Wider search for D peak
   const { xLeft, xRight } = findWidthAtHeightVoigt(
     [A, mu, sigma, gamma, eta],
     targetHeight,
-    400, // searchRange
+    searchRange,
     0.5
   );
+  
+  // If we couldn't find the width points, use FWHM as fallback
   const leftX = xLeft ?? mu - fwhm / 2;
   const rightX = xRight ?? mu + fwhm / 2;
   fwhm = rightX - leftX;
 
   console.log(`Final fitted mu: ${mu}`);
+  console.log(`Width parameters - sigma: ${sigma}, gamma: ${gamma}, eta: ${eta}`);
+  console.log(`Calculated width: ${fwhm}`);
 
   return { A, mu, sigma, gamma, eta, fwhm, leftX, rightX };
 }
