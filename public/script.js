@@ -16,8 +16,8 @@ document.addEventListener("DOMContentLoaded", () => {
       updatePeak1Inputs();
     }
 
-    // Only trigger the update button click
-    document.getElementById("updateButton").click();
+    // Update both tabs
+    updateDisplayedFile();
   });
 
   // Add event listeners for smoothing/fitting checkboxes in both tabs
@@ -53,6 +53,16 @@ document.addEventListener("DOMContentLoaded", () => {
     updateDisplayedFile();
   });
 
+  // Add event listeners for peak interval inputs
+  ["peak1Start", "peak1End", "peak2Start", "peak2End"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener("input", () => {
+        updateDisplayedFile();
+      });
+    }
+  });
+
   // Add navigation button event listeners for experimental tab
   document.getElementById("prevFile").addEventListener("click", () => {
     const selector = document.getElementById("fileSelector");
@@ -85,6 +95,28 @@ document.addEventListener("DOMContentLoaded", () => {
       selector.selectedIndex++;
       updateArchaeoPlot();
     }
+  });
+
+  // Add event listener for the Update Peaks button
+  document.getElementById("updateButton").addEventListener("click", () => {
+    updateDisplayedFile();
+  });
+
+  // Add event listeners for tab switching
+  document.getElementById("tabExperimental").addEventListener("click", () => {
+    document.getElementById("experimentalSection").style.display = "block";
+    document.getElementById("archaeologicalSection").style.display = "none";
+    document.getElementById("tabExperimental").classList.add("active");
+    document.getElementById("tabArchaeological").classList.remove("active");
+  });
+
+  document.getElementById("tabArchaeological").addEventListener("click", () => {
+    document.getElementById("experimentalSection").style.display = "none";
+    document.getElementById("archaeologicalSection").style.display = "block";
+    document.getElementById("tabArchaeological").classList.add("active");
+    document.getElementById("tabExperimental").classList.remove("active");
+    // Update archaeological tab when switching to it
+    updateArchaeoPlot();
   });
 });
 
@@ -175,6 +207,9 @@ document.getElementById("fileInput").addEventListener("change", function (e) {
 document.getElementById("updateButton").addEventListener("click", function () {
   updatePeak1Inputs();
   updateDisplayedFile();
+  if (document.getElementById("archaeologicalSection").style.display !== "none") {
+    updateArchaeoPlot();
+  }
 });
 
 document.getElementById("dBandWidthHeight").addEventListener("input", () => {
@@ -200,77 +235,8 @@ function updateDisplayedFile() {
   );
   updatePlot(spectrumData);
 
-  // Update archaeological tab's calibration charts if it's visible
-  if (document.getElementById("archaeologicalSection").style.display !== "none") {
-    const method = document.getElementById("analysisMethod").value;
-    const intervals = [
-      {
-        start: parseFloat(document.getElementById("peak1Start").value),
-        end: parseFloat(document.getElementById("peak1End").value),
-      },
-      {
-        start: parseFloat(document.getElementById("peak2Start").value),
-        end: parseFloat(document.getElementById("peak2End").value),
-      },
-    ];
-    const dBandWidthHeight = parseFloat(document.getElementById("dBandWidthHeight").value);
-    const gBandWidthHeight = parseFloat(document.getElementById("gBandWidthHeight").value);
-    const widthPercentages = [dBandWidthHeight / 100, gBandWidthHeight / 100];
-
-    const resultsByMethod = {
-      simple: [],
-      voigt: [],
-    };
-
-    allFilesData.forEach((fileData) => {
-      ["simple", "voigt"].forEach((method) => {
-        const divisionPoint = getDivisionPoint(
-          fileData.spectrumData.wavelengths,
-          fileData.spectrumData.intensities,
-          intervals,
-          method
-        );
-
-        let plotIntervals;
-        if (method === "voigt") {
-          plotIntervals = [
-            { start: 1150, end: divisionPoint },
-            { start: divisionPoint, end: 1700 }
-          ];
-        } else {
-          plotIntervals = intervals;
-        }
-
-        const { topPeaks } = findTopPeaks(
-          fileData.spectrumData.wavelengths,
-          fileData.spectrumData.intensities,
-          plotIntervals,
-          widthPercentages,
-          method,
-        );
-
-        const d = topPeaks[0] || {};
-        const g = topPeaks[1] || {};
-        const hdHg = d.height && g.height && g.height !== 0 ? d.height / g.height : null;
-        const wdWg = d.width && g.width && g.width !== 0 ? d.width / g.width : null;
-
-        const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
-        const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
-
-        resultsByMethod[method].push({
-          name: fileData.name,
-          temperature,
-          hdHg,
-          dWidth: d.width || null,
-          gWidth: g.width || null,
-          wdWg,
-        });
-      });
-    });
-
-    // Update calibration charts with Voigt method data
-    generateCalibrationCharts(resultsByMethod.voigt, "voigt");
-  }
+  // Always update archaeological tab's calibration charts
+  updateArchaeoPlot();
 }
 
 let archaeologicalFiles = [];
@@ -307,7 +273,7 @@ document.getElementById("archaeoFileInput").addEventListener("change", (e) => {
     });
 
     selectedArchaeoIndex = 0;
-    selector.value = 0;
+    selector.value = selectedArchaeoIndex;
     updateArchaeoPlot();
   });
 });
@@ -372,6 +338,12 @@ function updateArchaeoPlot() {
     "archaeoSpectrumChart"
   );
 
+  // Create the main spectrum chart
+  const ctx = document.getElementById("archaeoSpectrumChart").getContext("2d");
+  if (window.myCharts && window.myCharts["archaeoSpectrumChart"]) {
+    window.myCharts["archaeoSpectrumChart"].destroy();
+  }
+
   plotSpectrum(
     spectrumData,
     topPeaks,
@@ -414,7 +386,7 @@ function updateArchaeoPlot() {
     gBandWidthHeight
   );
 
-  // Generate calibration charts using Voigt method data from experimental tab
+  // Always update calibration charts if we have experimental data
   if (allFilesData.length > 0) {
     const resultsByMethod = {
       simple: [],
@@ -422,6 +394,9 @@ function updateArchaeoPlot() {
     };
 
     allFilesData.forEach((fileData) => {
+      // Skip if file is not included
+      if (!includedSamples.has(fileData.name)) return;
+
       ["simple", "voigt"].forEach((method) => {
         const divisionPoint = getDivisionPoint(
           fileData.spectrumData.wavelengths,
@@ -468,7 +443,11 @@ function updateArchaeoPlot() {
     });
 
     // Generate calibration charts using Voigt method data
-    generateCalibrationCharts(resultsByMethod.voigt, "voigt");
+    const container = document.getElementById('archaeoCalibrationPlots');
+    if (container) {
+      container.innerHTML = '';
+      generateCalibrationCharts(resultsByMethod.voigt, "voigt");
+    }
   }
 }
 
@@ -1502,7 +1481,7 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
     const selectAllCheckbox = document.getElementById('selectAllCheckbox');
     const sampleCheckboxes = document.querySelectorAll('.sample-checkbox');
 
-    // Listener for "Select All" checkbox - ONLY update state and refresh
+    // Listener for "Select All" checkbox
     if (selectAllCheckbox) {
         selectAllCheckbox.addEventListener('change', function() {
             const isChecked = this.checked;
@@ -1512,10 +1491,14 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
                 sampleNames.forEach(name => includedSamples.delete(name));
             }
             updateDisplayedFile(); // Trigger re-render
+            // Also update archaeological tab if it's visible
+            if (document.getElementById("archaeologicalSection").style.display !== "none") {
+                updateArchaeoPlot();
+            }
         });
     }
 
-    // Listeners for individual sample checkboxes - ONLY update state and refresh
+    // Listeners for individual sample checkboxes
     sampleCheckboxes.forEach(checkbox => {
       checkbox.addEventListener('change', function() {
         const sampleName = this.dataset.sampleName;
@@ -1525,6 +1508,10 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
           includedSamples.delete(sampleName);
         }
         updateDisplayedFile(); // Trigger re-render
+        // Also update archaeological tab if it's visible
+        if (document.getElementById("archaeologicalSection").style.display !== "none") {
+            updateArchaeoPlot();
+        }
       });
     });
   }, 0);
@@ -2093,17 +2080,18 @@ function generateCalibrationCharts(data, method) {
 
   // Create container for all plots
   const container = document.getElementById('archaeoCalibrationPlots');
+  if (!container) return;
   container.innerHTML = '';
 
-  // Create a flex container for the grid layout
+  // Create a flex container for the grid layout with fixed height
   const gridContainer = document.createElement('div');
-  gridContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 20px; justify-content: center;';
+  gridContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; height: 850px;';
   container.appendChild(gridContainer);
 
   // Create individual chart containers
   parameters.forEach((param, index) => {
     const chartContainer = document.createElement('div');
-    chartContainer.style.cssText = 'flex: 0 1 calc(50% - 10px); min-width: 300px; margin-bottom: 20px;';
+    chartContainer.style.cssText = 'flex: 0 1 calc(50% - 10px); min-width: 300px; height: 400px; margin-bottom: 20px;';
     
     const title = document.createElement('h4');
     title.style.cssText = 'text-align: center; margin: 0 0 10px 0';
@@ -2113,9 +2101,7 @@ function generateCalibrationCharts(data, method) {
     
     const canvas = document.createElement('canvas');
     canvas.id = `archaeoCalibration_${param}`;
-    canvas.width = 620;
-    canvas.height = 400;
-    canvas.style.cssText = 'width: 100%; height: 400px;';
+    canvas.style.cssText = 'width: 100%; height: 350px;';
     
     chartContainer.appendChild(title);
     chartContainer.appendChild(canvas);
@@ -2158,6 +2144,7 @@ function generateCalibrationCharts(data, method) {
         },
         options: {
           responsive: true,
+          maintainAspectRatio: false,
           scales: {
             x: {
               type: 'linear',
