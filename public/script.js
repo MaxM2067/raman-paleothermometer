@@ -118,6 +118,14 @@ document.addEventListener("DOMContentLoaded", () => {
     // Update archaeological tab when switching to it
     updateArchaeoPlot();
   });
+
+  // Add event listener for the new Derive Temperatures button in the archaeological tab
+  const archUpdateBtn = document.getElementById("archaeoUpdateButton");
+  if (archUpdateBtn) {
+    archUpdateBtn.addEventListener("click", () => {
+      updateArchaeoPlot();
+    });
+  }
 });
 
 // Register the error bars plugin
@@ -222,18 +230,10 @@ document.getElementById("gBandWidthHeight").addEventListener("input", () => {
 
 function updateDisplayedFile() {
   displayedFileIndex = parseInt(document.getElementById("fileSelector").value);
-  if (allFilesData.length === 0 || !allFilesData[displayedFileIndex]) return;
+  if (allFilesData.length === 0) return;
 
-  const spectrumData = allFilesData[displayedFileIndex].spectrumData;
-  console.log(
-    `Displaying file ${displayedFileIndex}:`,
-    allFilesData[displayedFileIndex].name,
-  );
-  console.log(
-    `Spectrum data intensities (first 5):`,
-    spectrumData.intensities.slice(0, 5),
-  );
-  updatePlot(spectrumData);
+  // Always update calibration stats using the first file (ensures stats are up-to-date)
+  updatePlot(allFilesData[0].spectrumData);
 
   // Always update archaeological tab's calibration charts
   updateArchaeoPlot();
@@ -247,6 +247,7 @@ document.getElementById("archaeoFileInput").addEventListener("change", (e) => {
   if (!files || files.length === 0) return;
 
   archaeologicalFiles = [];
+  window.archaeologicalFiles = archaeologicalFiles; // Ensure global reference
   const selector = document.getElementById("archaeoFileSelector");
   selector.innerHTML = "";
 
@@ -264,6 +265,7 @@ document.getElementById("archaeoFileInput").addEventListener("change", (e) => {
 
   Promise.all(loadPromises).then((loaded) => {
     archaeologicalFiles = loaded;
+    window.archaeologicalFiles = archaeologicalFiles; // Ensure global reference after loading
 
     loaded.forEach((f, i) => {
       const opt = document.createElement("option");
@@ -274,7 +276,12 @@ document.getElementById("archaeoFileInput").addEventListener("change", (e) => {
 
     selectedArchaeoIndex = 0;
     selector.value = selectedArchaeoIndex;
-    updateArchaeoPlot();
+    // Fix: ensure calibration stats are up-to-date before updating archaeological tab
+    if (allFilesData.length > 0) {
+      updateDisplayedFile(); // This will update both tabs and calibration
+    } else {
+      updateArchaeoPlot();
+    }
   });
 });
 
@@ -461,11 +468,15 @@ function displayDerivedTemperatures(allPeaks, method, dBandWidthHeight, gBandWid
   // Clear the container first
   tableDiv.innerHTML = '';
 
+  // Get calibration stats from global
+  const stats = window.calibrationStats;
+  const paramList = ['hdHg', 'dWidth', 'gWidth', 'wdWg'];
+
   // Create table container HTML
   const tableContainer = document.createElement('div');
   tableContainer.innerHTML = `
     <h3>Derived Temperatures:</h3>
-    <table border="1" style="border-collapse: collapse; width: 100%; max-width: 800px; font-family: Arial, sans-serif; font-size: 14px; margin-bottom: 20px;">
+    <table border="1" style="border-collapse: collapse; width: 100%; max-width: 1200px; font-family: Arial, sans-serif; font-size: 14px; margin-bottom: 20px;">
       <thead>
         <tr style="background-color: #f2f2f2;">
           <th style="padding: 5px; text-align: left;">Name</th>
@@ -475,7 +486,14 @@ function displayDerivedTemperatures(allPeaks, method, dBandWidthHeight, gBandWid
           <th>D width ${dBandWidthHeight + "%H"}</th>
           <th>G width ${gBandWidthHeight + "%H"}</th>
           <th style="padding: 5px; text-align: center;">WD/WG</th>
-          <th style="padding: 5px; text-align: center;">Temperature</th>
+          <th style="padding: 5px; text-align: center;">HD/HG Temp (°C)</th>
+          <th style="padding: 5px; text-align: center;">HD/HG Range (°C)</th>
+          <th style="padding: 5px; text-align: center;">D Width Temp (°C)</th>
+          <th style="padding: 5px; text-align: center;">D Width Range (°C)</th>
+          <th style="padding: 5px; text-align: center;">G Width Temp (°C)</th>
+          <th style="padding: 5px; text-align: center;">G Width Range (°C)</th>
+          <th style="padding: 5px; text-align: center;">WD/WG Temp (°C)</th>
+          <th style="padding: 5px; text-align: center;">WD/WG Range (°C)</th>
         </tr>
       </thead>
       <tbody>
@@ -495,6 +513,110 @@ function displayDerivedTemperatures(allPeaks, method, dBandWidthHeight, gBandWid
     const dPeak = file.dPeak != null ? file.dPeak.toFixed(1) : "N/A";
     const gPeak = file.gPeak != null ? file.gPeak.toFixed(1) : "N/A";
 
+    // For each parameter, derive all possible temperatures and ranges
+    const derivedTemps = paramList.map(param => {
+      if (!stats || !stats[param] || file[param] == null) return { best: 'N/A', range: 'N/A' };
+      const arr = stats[param];
+      const temps = arr.map(pt => pt.x);
+      const means = arr.map(pt => pt.y);
+      const stds = arr.map(pt => pt.stdDev);
+      const minY = Math.min(...arr.map(pt => pt.y - pt.stdDev));
+      const maxY = Math.max(...arr.map(pt => pt.y + pt.stdDev));
+      const isOutOfRange = file[param] < minY || file[param] > maxY;
+      let closestTemp = null;
+      if (isOutOfRange) {
+        if (file[param] < minY) {
+          closestTemp = temps[0];
+        } else {
+          closestTemp = temps[temps.length - 1];
+        }
+      }
+      
+      // Declare initialRanges once here, before it's used for 'best' and 'processedRangeStr'
+      const initialRanges = findTemperatureRangesWithinSD(temps, means, stds, file[param]);
+
+      const results = findTemperaturesForValue(temps, means, stds, file[param]);
+      let best;
+
+      if (results && results.length > 0) {
+        best = results.map(r => {
+          if (r.stdDev === 9999) { // Check for our placeholder
+            return `${r.temperature.toFixed(0)} (Uncertain)`;
+          } else {
+            return `${r.temperature.toFixed(0)} ± ${r.stdDev.toFixed(0)}`;
+          }
+        }).join('; ');
+      } else if (initialRanges && initialRanges.length > 0) { // Use initialRanges here
+        best = initialRanges.map(r => { // And here
+          const mid = (r.start + r.end) / 2;
+          let sd = null;
+          for (let i = 0; i < temps.length - 1; i++) {
+            if (mid >= temps[i] && mid <= temps[i + 1]) {
+              const t = (mid - temps[i]) / (temps[i + 1] - temps[i]);
+              sd = stds[i] + t * (stds[i + 1] - stds[i]);
+              break;
+            }
+          }
+          return `${mid.toFixed(0)} ± ${sd != null ? sd.toFixed(0) : '?'} (in SD)`;
+        }).join('; ');
+      } else if (isOutOfRange) {
+        best = `Out of range (closest: ${closestTemp.toFixed(0)}°C)`;
+      } else {
+        best = 'Out of range';
+      }
+
+      // Now, use initialRanges for processing the range string
+      let processedRangeStr;
+      let finalMergedRoundedRanges = []; // Initialize to empty
+
+      if (initialRanges && initialRanges.length > 0) {
+        // 1. Apply rounding to each range object
+        let roundedRangeObjects = initialRanges.map(r => {
+          return {
+            start: Math.floor(r.start / 100) * 100,
+            end: Math.ceil(r.end / 100) * 100
+          };
+        }).filter(r => r.end > r.start); // Ensure rounded range is still valid
+
+        // 2. Merge these rounded range objects (IIFE will return [] if roundedRangeObjects is [])
+        if (roundedRangeObjects.length > 0) { // Only merge if there's something to merge
+            finalMergedRoundedRanges = (function mergeThese(arrToMerge) {
+                if (!arrToMerge || arrToMerge.length === 0) return []; // Should not happen due to outer check, but good for safety
+                // Sort by start time, then by end time for consistent merging
+                arrToMerge.sort((a, b) => a.start - b.start || a.end - b.end);
+                
+                const merged = [];
+                merged.push({ ...arrToMerge[0] });
+                for (let i = 1; i < arrToMerge.length; i++) {
+                    const current = arrToMerge[i];
+                    const previous = merged[merged.length - 1];
+                    // If current range starts at or before the previous one ends, they touch or overlap
+                    if (current.start <= previous.end) {
+                        previous.end = Math.max(previous.end, current.end); // Extend the previous range
+                    } else {
+                        merged.push({ ...current }); // Add as a new, distinct range
+                    }
+                }
+                return merged;
+            })(roundedRangeObjects);
+        }
+      }
+
+      // 3. Convert to string or set "Out of range" message
+      if (finalMergedRoundedRanges.length === 0) {
+        // No valid ranges to show (either initially or after processing)
+        if (isOutOfRange && closestTemp !== null) {
+          processedRangeStr = `Out of range (closest: ${closestTemp.toFixed(0)}°C)`;
+        } else {
+          processedRangeStr = 'Out of range';
+        }
+      } else {
+        processedRangeStr = finalMergedRoundedRanges.map(r => `${r.start.toFixed(0)}–${r.end.toFixed(0)}`).join('; ');
+      }
+      
+      return { best, range: processedRangeStr };
+    });
+
     tbodyElement.innerHTML += `
       <tr>
         <td style="padding: 5px;">${file.name}</td>
@@ -504,7 +626,14 @@ function displayDerivedTemperatures(allPeaks, method, dBandWidthHeight, gBandWid
         <td style="padding: 5px; text-align: center;">${dWidth}</td>
         <td style="padding: 5px; text-align: center;">${gWidth}</td>
         <td style="padding: 5px; text-align: center;">${wdWg}</td>
-        <td style="padding: 5px; text-align: center;">TBD</td>
+        <td style="padding: 5px; text-align: center;">${derivedTemps[0].best}</td>
+        <td style="padding: 5px; text-align: center;">${derivedTemps[0].range}</td>
+        <td style="padding: 5px; text-align: center;">${derivedTemps[1].best}</td>
+        <td style="padding: 5px; text-align: center;">${derivedTemps[1].range}</td>
+        <td style="padding: 5px; text-align: center;">${derivedTemps[2].best}</td>
+        <td style="padding: 5px; text-align: center;">${derivedTemps[2].range}</td>
+        <td style="padding: 5px; text-align: center;">${derivedTemps[3].best}</td>
+        <td style="padding: 5px; text-align: center;">${derivedTemps[3].range}</td>
       </tr>
     `;
   });
@@ -2078,6 +2207,9 @@ function generateCalibrationCharts(data, method) {
     }).filter(point => point != null);
   });
 
+  // Make stats globally accessible for archaeological temperature derivation
+  window.calibrationStats = stats;
+
   // Create container for all plots
   const container = document.getElementById('archaeoCalibrationPlots');
   if (!container) return;
@@ -2107,6 +2239,135 @@ function generateCalibrationCharts(data, method) {
     chartContainer.appendChild(canvas);
     gridContainer.appendChild(chartContainer);
 
+    // Prepare archaeological overlay points
+    let archOverlayPoints = [];
+    if (window.archaeologicalFiles && window.archaeologicalFiles.length > 0) {
+      // For each archaeological sample, get the value for this parameter and find all derived temperatures
+      const statsArr = stats[param];
+      const temps = statsArr.map(pt => pt.x);
+      const means = statsArr.map(pt => pt.y);
+      const stds = statsArr.map(pt => pt.stdDev);
+      (window.archaeologicalFiles || []).forEach(fileData => {
+        const name = fileData.name;
+        let hdHg = null, dWidth = null, gWidth = null, wdWg = null;
+        // Try to calculate using the same logic as displayDerivedTemperatures
+        if (fileData.spectrumData && fileData.spectrumData.wavelengths && fileData.spectrumData.intensities) {
+          // Use the same intervals and method as in updateArchaeoPlot
+          const method = document.getElementById("analysisMethod").value;
+          const dBandWidthHeight = parseFloat(document.getElementById("dBandWidthHeight").value);
+          const gBandWidthHeight = parseFloat(document.getElementById("gBandWidthHeight").value);
+          const widthPercentages = [dBandWidthHeight / 100, gBandWidthHeight / 100];
+          const intervals = [
+            {
+              start: parseFloat(document.getElementById("peak1Start").value),
+              end: parseFloat(document.getElementById("peak1End").value),
+            },
+            {
+              start: parseFloat(document.getElementById("peak2Start").value),
+              end: parseFloat(document.getElementById("peak2End").value),
+            },
+          ];
+          const divisionPoint = getDivisionPoint(
+            fileData.spectrumData.wavelengths,
+            fileData.spectrumData.intensities,
+            intervals,
+            method
+          );
+          let plotIntervals;
+          if (method === "voigt") {
+            plotIntervals = [
+              { start: 1150, end: divisionPoint },
+              { start: divisionPoint, end: 1700 }
+            ];
+          } else {
+            plotIntervals = intervals;
+          }
+          const { topPeaks } = findTopPeaks(
+            fileData.spectrumData.wavelengths,
+            fileData.spectrumData.intensities,
+            plotIntervals,
+            widthPercentages,
+            method,
+            "archaeoSpectrumChart"
+          );
+          const d = topPeaks[0] || {};
+          const g = topPeaks[1] || {};
+          hdHg = d.height && g.height && g.height !== 0 ? d.height / g.height : null;
+          dWidth = d.width || null;
+          gWidth = g.width || null;
+          wdWg = d.width && g.width && g.width !== 0 ? d.width / g.width : null;
+        }
+        let archValue = null;
+        if (param === 'hdHg') archValue = hdHg;
+        else if (param === 'dWidth') archValue = dWidth;
+        else if (param === 'gWidth') archValue = gWidth;
+        else if (param === 'wdWg') archValue = wdWg;
+        if (archValue == null || isNaN(archValue)) return;
+
+        // Check if the archaeological value is out of range of the calibration curve (even with SD)
+        const statsArr = stats[param];
+        const temps = statsArr.map(pt => pt.x);
+        const means = statsArr.map(pt => pt.y);
+        const stds = statsArr.map(pt => pt.stdDev);
+        const minY = Math.min(...statsArr.map(pt => pt.y - pt.stdDev));
+        const maxY = Math.max(...statsArr.map(pt => pt.y + pt.stdDev));
+        const isOutOfRange = archValue < minY || archValue > maxY;
+
+        // Find the closest in-range temperature (edge of calibration curve)
+        let closestTemp = null;
+        if (isOutOfRange) {
+          if (archValue < minY) {
+            closestTemp = temps[0];
+          } else {
+            closestTemp = temps[temps.length - 1];
+          }
+        }
+
+        // Find all derived temperatures for this value
+        const results = findTemperaturesForValue(temps, means, stds, archValue);
+        if (isOutOfRange) {
+          // For out-of-range points, plot at the closest temperature
+          archOverlayPoints.push({
+            x: closestTemp,
+            y: archValue,
+            name,
+            isOutOfRange: true,
+            closestTemp
+          });
+        } else if (results.length > 0) {
+          // For in-range points, plot at all derived temperatures
+          results.forEach(r => {
+            archOverlayPoints.push({
+              x: r.temperature,
+              y: archValue,
+              name,
+              isOutOfRange: false,
+              closestTemp: null
+            });
+          });
+        }
+      });
+    }
+
+    // Prepare data for mean line and SD bands
+    const meanCalibrationData = stats[param].map(point => ({
+      x: point.x,
+      y: point.y
+    }));
+    const sdValuesForErrorBars = stats[param].map(point => point.stdDev);
+
+    const lowerBandData = stats[param].map(point => ({ x: point.x, y: point.y - point.stdDev }));
+    const upperBandData = stats[param].map(point => ({ x: point.x, y: point.y + point.stdDev }));
+
+    // Compute min/max Y to include full SD bars
+    let minY = Math.min(...stats[param].map(point => point.y - point.stdDev));
+    let maxY = Math.max(...stats[param].map(point => point.y + point.stdDev));
+
+    // Add padding to Y-axis range to accommodate out-of-range points
+    const yRange = maxY - minY;
+    minY = minY - yRange * 0.1;  // Add 10% padding below
+    maxY = maxY + yRange * 0.1;  // Add 10% padding above
+
     // Create the chart after a short delay to ensure canvas is ready
     setTimeout(() => {
       const ctx = canvas.getContext('2d');
@@ -2117,30 +2378,87 @@ function generateCalibrationCharts(data, method) {
       }
 
       // Create new chart
+      const chartDatasets = [
+        // Dataset 1: Lower SD Boundary (invisible, for fill target)
+        {
+            data: lowerBandData,
+            borderColor: 'transparent', 
+            pointRadius: 0,
+            showLine: true, // Needs to be true for tension to apply and for fill to work correctly
+            tension: 0.3,    
+            order: 3         
+        },
+        // Dataset 2: Upper SD Boundary (this creates the shaded band)
+        {
+            label: 'Calibration Range (Mean ± SD)', 
+            data: upperBandData,
+            borderColor: 'rgba(255, 150, 150, 0.3)', 
+            borderWidth: 1,
+            borderDash: [3, 3], 
+            backgroundColor: 'rgba(255, 0, 0, 0.05)',  // Very light red, semi-transparent fill
+            pointRadius: 0,
+            showLine: true,     
+            tension: 0.3,
+            fill: '-1',         // Fill to the previous dataset (lowerBandData)
+            order: 2            
+        },
+        // Dataset 3: Original Calibration Mean Line with Error Bars
+        {
+          label: 'Calibration Mean', // Changed from 'Calibration Data' for clarity if needed
+          data: meanCalibrationData, // Use the mapped mean data
+          borderColor: 'red',
+          backgroundColor: 'red',
+          pointRadius: 4,
+          showLine: true,
+          tension: 0.3,
+          errorBars: {
+            y: {
+              array: sdValuesForErrorBars, // Use the mapped SD values
+              color: 'rgba(255, 0, 0, 0.5)',
+              width: 2
+            }
+          },
+          order: 1 // Drawn on top of the band
+        }
+      ];
+
+      // Add archaeological overlay points dataset if they exist
+      if (archOverlayPoints.length > 0) {
+        chartDatasets.push({
+            label: 'Archaeological Sample(s)',
+            data: archOverlayPoints,
+            backgroundColor: function(context) {
+              return context.raw.isOutOfRange ? 'white' : 'blue';
+            },
+            borderColor: 'blue',
+            pointRadius: 7,
+            showLine: false,
+            pointStyle: function(context) {
+              return context.raw.isOutOfRange ? 'circle' : 'rectRot';
+            },
+            borderDash: function(context) {
+              return context.raw.isOutOfRange ? [5, 5] : [];
+            },
+            borderWidth: 2,
+            hoverRadius: 9,
+            parsing: false, // Assuming this is still needed from previous context
+            datalabels: { // This plugin might not be active, but keeping structure
+              align: 'top',
+              anchor: 'end',
+              color: 'blue',
+              font: { weight: 'bold' },
+              formatter: function(value, context) {
+                return value.name || '';
+              }
+            },
+            order: 0 // Drawn on top of everything
+        });
+      }
+      
       window.statsCharts[canvas.id] = new Chart(ctx, {
         type: 'scatter',
         data: {
-          datasets: [
-            {
-              label: 'Calibration Data',
-              data: stats[param].map(point => ({
-                x: point.x,
-                y: point.y
-              })),
-              borderColor: 'red',
-              backgroundColor: 'red',
-              pointRadius: 4,
-              showLine: true,
-              tension: 0.3,
-              errorBars: {
-                y: {
-                  array: stats[param].map(point => point.stdDev),
-                  color: 'rgba(255, 0, 0, 0.5)',
-                  width: 2
-                }
-              }
-            }
-          ]
+          datasets: chartDatasets
         },
         options: {
           responsive: true,
@@ -2152,18 +2470,48 @@ function generateCalibrationCharts(data, method) {
             },
             y: {
               type: 'linear',
-              title: { display: true, text: title.textContent }
+              title: { display: true, text: title.textContent },
+              min: minY,
+              max: maxY
             }
           },
           plugins: {
             tooltip: {
               callbacks: {
                 label: function(context) {
-                  const index = context.dataIndex;
-                  return [
-                    `Average: ${stats[param][index].y.toFixed(3)}`,
-                    `± SD: ${stats[param][index].stdDev.toFixed(3)}`
-                  ];
+                  if (context.dataset.label === 'Archaeological Sample(s)') {
+                    if (context.raw.isOutOfRange) {
+                      return `${context.raw.name || ''}: Out of range (closest: ${context.raw.closestTemp.toFixed(0)}°C)`;
+                    }
+                    return `${context.raw.name || ''}: (${context.raw.x.toFixed(0)}, ${context.raw.y.toFixed(2)})`;
+                  }
+                  // Tooltip for points on the mean line (original dataset)
+                  if (context.dataset.label === 'Calibration Mean') { // Matches new label
+                     const index = context.dataIndex;
+                     // Ensure stats[param][index] is valid before accessing
+                     if (stats[param] && stats[param][index]) {
+                        return [
+                          `Mean: ${stats[param][index].y.toFixed(3)} (Temp: ${stats[param][index].x.toFixed(0)})`,
+                          `± SD: ${stats[param][index].stdDev.toFixed(3)}`
+                        ];
+                     }
+                     return `Mean: ${context.parsed.y.toFixed(3)}`; // Fallback
+                  }
+                  // Tooltip for the band itself (upper SD line hover)
+                  if (context.dataset.label === 'Calibration Range (Mean ± SD)') {
+                    const index = context.dataIndex;
+                     // Ensure stats[param][index] is valid before accessing
+                    if (stats[param] && stats[param][index]) {
+                        return `Upper SD: ${(stats[param][index].y + stats[param][index].stdDev).toFixed(3)} (Temp: ${stats[param][index].x.toFixed(0)})`;
+                    }
+                    return `Upper SD: ${context.parsed.y.toFixed(3)}`; // Fallback
+                  }
+                  // Fallback tooltip for other cases (e.g. lower bound if made visible)
+                  const val = context.dataset.data[context.dataIndex];
+                  if (val && typeof val.x !== 'undefined' && typeof val.y !== 'undefined') {
+                    return `${context.dataset.label || 'Data'}: (${val.x.toFixed(0)}, ${val.y.toFixed(3)})`;
+                  }
+                  return `${context.dataset.label || 'Data'}: Y-value ${context.parsed.y.toFixed(3)}`;
                 }
               }
             }
@@ -2172,4 +2520,190 @@ function generateCalibrationCharts(data, method) {
       });
     }, 100);
   });
+}
+
+/**
+ * Find all temperature(s) where the calibration curve (piecewise linear) crosses the given value.
+ * Returns an array of { temperature, stdDev } objects, where stdDev is the uncertainty in temperature (ΔT).
+ *
+ * @param {number[]} temps - Array of calibration temperatures (sorted ascending)
+ * @param {number[]} means - Array of mean parameter values at each temperature
+ * @param {number[]} stds - Array of stdDev values of the *parameter* at each temperature
+ * @param {number} value - Archaeological sample's parameter value
+ * @returns {Array<{temperature: number, stdDev: number}>}
+ */
+function findTemperaturesForValue(temps, means, stds, value) {
+  const results = [];
+  const slopeThreshold = 1e-9; // To avoid division by zero or near-zero slopes
+  const veryHighUncertainty = 9999; // Placeholder for unconstrained temperature
+
+  for (let i = 0; i < temps.length - 1; i++) {
+    const x0 = temps[i], x1 = temps[i + 1]; // Temperatures
+    const y0 = means[i], y1 = means[i + 1]; // Mean parameter values
+    const s0 = stds[i], s1 = stds[i + 1];   // SD of parameter values
+
+    if (x1 <= x0) continue; // Skip invalid segments
+
+    // Check if value is between y0 and y1 (inclusive of endpoints)
+    if ((value >= y0 && value <= y1) || (value <= y0 && value >= y1)) {
+      let derivedTemp, tempUncertainty;
+      const parameterDiff = y1 - y0;
+      const temperatureDiff = x1 - x0;
+
+      if (Math.abs(parameterDiff) < slopeThreshold) {
+        // Segment is effectively flat
+        if (Math.abs(value - y0) < slopeThreshold) { // Value is on the flat line
+          derivedTemp = (x0 + x1) / 2; // Midpoint as best guess
+          // If flat, temperature is poorly constrained by this parameter value.
+          // A simple representation of this uncertainty could be half the segment length.
+          // Or, use the placeholder to indicate it's poorly constrained.
+          tempUncertainty = veryHighUncertainty;
+        } else {
+          // Value is not on the flat line, but logic entered here due to y0/y1 range check.
+          // This specific case should ideally not be a primary match.
+          // However, if forced, the uncertainty is very high.
+          derivedTemp = (x0 + x1) / 2;
+          tempUncertainty = veryHighUncertainty;
+        }
+      } else {
+        // Segment is not flat, proceed with interpolation
+        const t_ratio = (value - y0) / parameterDiff;
+        derivedTemp = x0 + t_ratio * temperatureDiff;
+
+        // Clamp derivedTemp to the segment [x0, x1] to be safe,
+        // although t_ratio should be [0,1] if value is between y0,y1
+        derivedTemp = Math.max(x0, Math.min(x1, derivedTemp));
+        
+        // Interpolate the SD of the *parameter* at the derivedTemp
+        // Recalculate t_ratio for the clamped derivedTemp to ensure consistency
+        const clamped_t_ratio = (derivedTemp - x0) / temperatureDiff;
+        const stdDevParameterAtTemp = s0 + clamped_t_ratio * (s1 - s0);
+        
+        const slope = parameterDiff / temperatureDiff;
+
+        if (Math.abs(slope) < slopeThreshold) {
+          tempUncertainty = veryHighUncertainty;
+        } else {
+          tempUncertainty = Math.abs(stdDevParameterAtTemp / slope);
+        }
+      }
+      results.push({ temperature: derivedTemp, stdDev: tempUncertainty });
+    }
+  }
+  return results;
+}
+
+/**
+ * Find all temperature intervals where the archaeological value is within mean ± SD of the calibration curve.
+ * Returns an array of {start, end} objects (temperature ranges).
+ *
+ * @param {number[]} temps - Array of calibration temperatures (sorted ascending)
+ * @param {number[]} means - Array of mean parameter values at each temperature
+ * @param {number[]} stds - Array of stdDev values at each temperature
+ * @param {number} value - Archaeological sample's parameter value
+ * @returns {Array<{start: number, end: number}>}
+ */
+function findTemperatureRangesWithinSD(temps, means, stds, value) {
+    if (temps.length < 2) return []; // Need at least one segment
+
+    const validSegments = [];
+
+    // Helper to check if value is effectively in band at t_check for a given original segment
+    function isEffectivelyInBand(t_check, segmentT0, segmentT1, segmentM0, segmentM1, segmentS0, segmentS1) {
+        // Clamp t_check to the segment's bounds for interpolation
+        const t_clamped = Math.max(segmentT0, Math.min(segmentT1, t_check));
+        
+        const factor = (segmentT1 === segmentT0) ? 0 : (t_clamped - segmentT0) / (segmentT1 - segmentT0);
+        const m_check = segmentM0 + factor * (segmentM1 - segmentM0);
+        const s_check = segmentS0 + factor * (segmentS1 - segmentS0);
+        
+        // Use a small epsilon for floating point comparisons
+        const epsilon = 1e-9;
+        return value >= m_check - s_check - epsilon && value <= m_check + s_check + epsilon;
+    }
+
+    // Helper to find temperature where 'value' intersects a line defined by (x0,y0)-(x1,y1)
+    function getTemperatureForY(y_target, x0, y0, x1, y1) {
+        const epsilon = 1e-9;
+        if (Math.abs(y1 - y0) < epsilon) { // Line is nearly horizontal
+            return (Math.abs(y_target - y0) < epsilon) ? x0 : null; // If value matches horizontal line, return start (or any point)
+        }
+        const t_intersect_ratio = (y_target - y0) / (y1 - y0);
+
+        // Check if intersection is within or very close to segment bounds (using epsilon)
+        if (t_intersect_ratio >= 0 - epsilon && t_intersect_ratio <= 1 + epsilon) {
+            let temp = x0 + t_intersect_ratio * (x1 - x0);
+            // Clamp to segment bounds to ensure interpolated point is valid for the segment
+            return Math.max(x0, Math.min(x1, temp));
+        }
+        return null;
+    }
+
+    for (let i = 0; i < temps.length - 1; i++) {
+        const t0 = temps[i], t1 = temps[i + 1];
+        if (t1 <= t0 + 1e-9) continue; // Skip zero-length or invalid segments
+
+        const m0 = means[i], m1 = means[i + 1];
+        const s0 = stds[i], s1 = stds[i + 1];
+
+        const y_lower_0 = m0 - s0, y_lower_1 = m1 - s1;
+        const y_upper_0 = m0 + s0, y_upper_1 = m1 + s1;
+
+        // Collect points of interest: segment boundaries and crossings with SD bands
+        const pointsOfInterest = new Set();
+        pointsOfInterest.add(t0);
+        pointsOfInterest.add(t1);
+        
+        const crossLowerTemp = getTemperatureForY(value, t0, y_lower_0, t1, y_lower_1);
+        if (crossLowerTemp !== null) pointsOfInterest.add(crossLowerTemp);
+
+        const crossUpperTemp = getTemperatureForY(value, t0, y_upper_0, t1, y_upper_1);
+        if (crossUpperTemp !== null) pointsOfInterest.add(crossUpperTemp);
+        
+        // Sort unique points and ensure they are strictly within the current segment [t0, t1]
+        const sortedPoints = Array.from(pointsOfInterest)
+            .map(p => Math.max(t0, Math.min(t1, p))) // Clamp points to the segment
+            .sort((a, b) => a - b)
+            .filter((p, index, arr) => index === 0 || p > arr[index-1] + 1e-9); // Keep unique points (epsilon for float)
+
+        for (let j = 0; j < sortedPoints.length - 1; j++) {
+            const p_start = sortedPoints[j];
+            const p_end = sortedPoints[j + 1];
+
+            if (p_end <= p_start + 1e-9) continue; // Skip zero-length or tiny sub-segments
+
+            const mid_p = (p_start + p_end) / 2;
+            // Check if the value is in the band at the midpoint of this sub-segment
+            // using the original segment's m0,m1,s0,s1 for interpolation context.
+            if (isEffectivelyInBand(mid_p, t0, t1, m0, m1, s0, s1)) {
+                validSegments.push({ start: p_start, end: p_end });
+            }
+        }
+    }
+
+    if (validSegments.length === 0) return [];
+
+    // Sort all found valid sub-segments by start time
+    validSegments.sort((a, b) => a.start - b.start || a.end - b.end);
+
+    // Merge overlapping or adjacent valid sub-segments
+    const mergedRanges = [];
+    if (validSegments.length > 0) {
+        mergedRanges.push({ ...validSegments[0] }); // Start with the first segment
+
+        for (let i = 1; i < validSegments.length; i++) {
+            const current = validSegments[i];
+            const previous = mergedRanges[mergedRanges.length - 1];
+
+            // If current segment starts at or before previous one ends (within epsilon)
+            if (current.start <= previous.end + 1e-9) {
+                previous.end = Math.max(previous.end, current.end); // Merge
+            } else {
+                mergedRanges.push({ ...current }); // Add as a new range
+            }
+        }
+    }
+    
+    // Filter out any ranges that are effectively points or have negligible length
+    return mergedRanges.filter(range => range.end > range.start + 1e-9);
 }

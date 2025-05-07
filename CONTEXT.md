@@ -20,11 +20,20 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 - **Archaeological Samples Tab**
   - Upload multiple spectra of samples with unknown firing temperature
   - Navigate through samples using dropdown or quick navigation buttons (<<, >>)
-  - Apply the same analysis pipeline (method, intervals, height %)
-  - Derive temperature ranges based on calibration curves from experimental data
-  - Show spectra and fitted peaks for each sample
-  - Display derived temperatures in a summary table
-  - Overlay archaeological points on calibration charts 
+  - Apply the same analysis pipeline (method, intervals, height %) as the Experimental Tab for consistency
+  - Click "Derive Temperatures" button to (re)calculate and display derived temperatures and update calibration plots.
+  - Derive temperature ranges based on calibration curves from experimental data. The derived temperature table shows:
+    - "Best estimate" temperatures (where the archaeological sample's value crosses the mean calibration curve).
+    - "Possible range" temperatures (where the archaeological sample's value falls within the mean ± standard deviation of the calibration curve).
+    - For values outside the mean calibration curve but within the SD band, the "best estimate" shows the midpoint of the in-SD range.
+    - If a value is entirely out of the calibration curve (even with SD), it's reported as "Out of range (closest: X°C)", indicating the temperature at the nearest edge of the calibration curve.
+  - Show spectra and fitted peaks for each sample (if applicable based on selected method).
+  - Display derived temperatures in a summary table for each parameter (HD/HG, D Width, G Width, WD/WG), including best estimates and SD ranges.
+  - Overlay archaeological points on calibration charts:
+    - Points are plotted at their derived temperature(s) against their parameter value.
+    - Out-of-range archaeological points are visually distinguished (e.g., hollow circles with dashed borders).
+    - Tooltips for out-of-range points display "Out of range (closest: X°C)".
+    - Calibration chart Y-axis automatically adjusts with padding to ensure out-of-range points are visible.
 
 ### 📈 Plotting & Interactivity
 - Full spectrum plot with:
@@ -38,6 +47,9 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 - Error bars showing standard deviations
 - Peak labels with wavelength values
 - Width labels showing FWHM values
+- Calibration charts in the Archaeological tab dynamically update with overlaid archaeological sample points.
+  - Visual distinction for out-of-range points and informative tooltips.
+  - Y-axis scales adjust to include all data points, including standard deviations and out-of-range archaeological samples.
 
 ### ⚙️ Custom Controls
 - User-selectable peak intervals and search width height (% of peak)
@@ -64,9 +76,10 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 - Detailed statistical tables with temperature-wise breakdowns
 
 ### 🔄 Synchronization Features
-- Synchronized method selection between tabs
-- Synchronized mode selection (Broad/Conventional)
-- Automatic parameter updates when changing methods
+- Synchronized method selection between tabs (Experimental tab controls Archaeological tab calculations).
+- Synchronized mode selection (Broad/Conventional) (Experimental tab controls Archaeological tab calculations).
+- Peak interval and width percentage settings from the Experimental tab are used for all calculations in the Archaeological tab to ensure consistency.
+- Automatic parameter updates when changing methods.
 - Default value restoration for different modes
 - Consistent width percentage settings across tabs
 
