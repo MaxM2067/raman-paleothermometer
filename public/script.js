@@ -233,7 +233,12 @@ function updateDisplayedFile() {
   if (allFilesData.length === 0) return;
 
   // Always update calibration stats using the first file (ensures stats are up-to-date)
-  updatePlot(allFilesData[0].spectrumData);
+  // updatePlot(allFilesData[0].spectrumData); // OLD LINE - Always uses the first file
+
+  // Use the selected file's spectrum data to update the main plot
+  if (allFilesData[displayedFileIndex]) {
+    updatePlot(allFilesData[displayedFileIndex].spectrumData);
+  }
 
   // Always update archaeological tab's calibration charts
   updateArchaeoPlot();
