@@ -1138,8 +1138,8 @@ function plotSpectrum(
         x: {
           type: "linear",
           title: { display: true, text: "Wavelength (cm⁻¹)" },
-          min: Math.min(...spectrumData.wavelengths),
-          max: Math.max(...spectrumData.wavelengths),
+          min: 850,
+          max: 2150,
         },
         y: {
           title: { display: true, text: "Intensity" },
