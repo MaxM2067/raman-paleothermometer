@@ -1511,7 +1511,11 @@ function fitPseudoVoigt(xData, yData, peakIndex, canvasId = "spectrumChart") {
   const expectedWidth = peakIndex === 0 ? 300 : 200; // D peak typically wider than G peak
   const sigmaGuess = expectedWidth / (2 * Math.sqrt(2 * Math.log(2)));
   const gammaGuess = expectedWidth / 2;
-  const etaGuess = 0.7;
+  let etaGuess = 0.7; // Default eta
+
+  /* if (peakIndex === 1) { // G-peak
+    etaGuess = 0.4; // Lower eta for a more Gaussian initial shape for the G-peak
+  } */
 
   let params = [AGuess, muGuess, sigmaGuess, gammaGuess, etaGuess];
   const stepSizes = [
