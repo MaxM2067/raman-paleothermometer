@@ -2369,14 +2369,50 @@ function generateCalibrationCharts(data, method) {
     const lowerBandData = stats[param].map(point => ({ x: point.x, y: point.y - point.stdDev }));
     const upperBandData = stats[param].map(point => ({ x: point.x, y: point.y + point.stdDev }));
 
-    // Compute min/max Y to include full SD bars
-    let minY = Math.min(...stats[param].map(point => point.y - point.stdDev));
-    let maxY = Math.max(...stats[param].map(point => point.y + point.stdDev));
+    // START OF REPLACEMENT BLOCK for Y-axis calculation
+    let minY, maxY; // These will be the final values for the chart axis
 
-    // Add padding to Y-axis range to accommodate out-of-range points
-    const yRange = maxY - minY;
-    minY = minY - yRange * 0.1;  // Add 10% padding below
-    maxY = maxY + yRange * 0.1;  // Add 10% padding above
+    let dataDrivenMinY = Infinity;
+    let dataDrivenMaxY = -Infinity;
+
+    // Consider calibration stats (mean +/- SD)
+    if (stats[param] && stats[param].length > 0) {
+        stats[param].forEach(point => {
+            if (point && typeof point.y === 'number' && isFinite(point.y) && typeof point.stdDev === 'number' && isFinite(point.stdDev)) {
+                 dataDrivenMinY = Math.min(dataDrivenMinY, point.y - point.stdDev);
+                 dataDrivenMaxY = Math.max(dataDrivenMaxY, point.y + point.stdDev);
+            }
+        });
+    }
+
+    // Consider archaeological overlay points' Y values
+    if (archOverlayPoints && archOverlayPoints.length > 0) {
+        archOverlayPoints.forEach(point => {
+            if (point && typeof point.y === 'number' && isFinite(point.y)) {
+                dataDrivenMinY = Math.min(dataDrivenMinY, point.y);
+                dataDrivenMaxY = Math.max(dataDrivenMaxY, point.y);
+            }
+        });
+    }
+
+    if (dataDrivenMinY === Infinity || dataDrivenMaxY === -Infinity) {
+        // No valid data points found from any source
+        minY = 0;
+        maxY = 1; // Default Y range
+    } else {
+        const yRangeValue = dataDrivenMaxY - dataDrivenMinY;
+        if (yRangeValue === 0) {
+            // Single data point or all points at the same y-value.
+            const padding = Math.abs(dataDrivenMinY * 0.1) || 0.1;
+            minY = dataDrivenMinY - padding;
+            maxY = dataDrivenMaxY + padding;
+        } else {
+            // Apply 10% padding to the actual data range
+            minY = dataDrivenMinY - yRangeValue * 0.1;
+            maxY = dataDrivenMaxY + yRangeValue * 0.1;
+        }
+    }
+    // END OF REPLACEMENT BLOCK for Y-axis calculation
 
     // Create the chart after a short delay to ensure canvas is ready
     setTimeout(() => {
