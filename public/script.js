@@ -2022,7 +2022,12 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
                     `± SD: ${stdDevs[index].y.toFixed(3)}`
                   ];
                 }
-                return `Value: ${context.parsed.y.toFixed(3)}`;
+                // For individual points, show name and value
+                const pointData = filteredData[context.dataIndex];
+                if (pointData) {
+                  return `${pointData.name}: ${pointData.value.toFixed(3)}`;
+                }
+                return `Value: ${context.parsed.y.toFixed(3)}`; // Fallback
               }
             }
           }
