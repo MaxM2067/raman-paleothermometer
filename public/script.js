@@ -1812,8 +1812,8 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
   });
 
   const means = Object.entries(groupedData).map(([temp, values]) => ({
-    x: parseFloat(temp),
-    y: values.reduce((a, b) => a + b) / values.length
+    x: parseFloat(temp), // Temperature
+    y: values.reduce((a, b) => a + b) / values.length // Mean parameter value
   }));
 
   const stdDevs = Object.entries(groupedData).map(([temp, values]) => {
@@ -1821,10 +1821,106 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
     const squareDiffs = values.map(value => Math.pow(value - mean, 2));
     const variance = squareDiffs.reduce((a, b) => a + b) / values.length;
     return {
-      x: parseFloat(temp),
-      y: Math.sqrt(variance)
+      x: parseFloat(temp), 
+      y: Math.sqrt(variance) // Standard deviation of the parameter
     };
   });
+
+  // Sort data points by temperature
+  means.sort((a, b) => a.x - b.x);
+  stdDevs.sort((a, b) => a.x - b.x); 
+
+  const segmentTempUncertainties = []; // Will store {temp: T, uncertainty: ΔT_value_or_string}
+  const tempUncertaintyValues_currentMethod = []; // Will store numerical ΔT or null for charting
+
+  if (means.length >= 1) {
+    if (means.length >= 2) {
+      for (let i = 0; i < means.length - 1; i++) {
+        const T1 = means[i].x;
+        const P_mean1 = means[i].y;
+        const P_std1_obj = stdDevs.find(sd => sd.x === T1);
+        const P_std1 = P_std1_obj ? P_std1_obj.y : 0;
+
+        const T2 = means[i+1].x;
+        const P_mean2 = means[i+1].y;
+        const P_std2_obj = stdDevs.find(sd => sd.x === T2);
+        const P_std2 = P_std2_obj ? P_std2_obj.y : 0;
+
+        const delta_T_actual = T2 - T1;
+        const delta_P_mean = P_mean2 - P_mean1;
+        let local_delta_T_uncert;
+
+        if (Math.abs(delta_T_actual) < 1e-6) {
+          local_delta_T_uncert = "N/A (Identical Temps)";
+        } else {
+          const slope_m = delta_P_mean / delta_T_actual;
+          const avg_P_std_segment = (P_std1 + P_std2) / 2;
+          if (Math.abs(slope_m) < 1e-9) {
+            local_delta_T_uncert = "High (Flat Segment)";
+          } else {
+            local_delta_T_uncert = Math.abs(avg_P_std_segment / slope_m);
+          }
+        }
+        segmentTempUncertainties.push({ temp: T1, uncertainty: local_delta_T_uncert });
+      }
+    }
+
+    const lastTempPoint = means[means.length - 1];
+    let lastPointUncertaintyDisplay;
+    let lastPointNumericalUncertainty = null;
+
+    if (means.length < 2) {
+      lastPointUncertaintyDisplay = "N/A (Single Point)";
+    } else {
+      const T_before_last = means[means.length - 2].x;
+      const P_mean_before_last = means[means.length - 2].y;
+      const T_last = lastTempPoint.x;
+      const P_mean_last = lastTempPoint.y;
+      const P_std_last_obj = stdDevs.find(sd => sd.x === T_last);
+      const P_std_last = P_std_last_obj ? P_std_last_obj.y : 0;
+      const delta_T_last_segment = T_last - T_before_last;
+      const delta_P_last_segment = P_mean_last - P_mean_before_last;
+      let calculatedUncertainty;
+
+      if (Math.abs(delta_T_last_segment) < 1e-6) {
+        calculatedUncertainty = "N/A (Prev. Temps Identical)";
+      } else {
+        const slope_m_last_segment = delta_P_last_segment / delta_T_last_segment;
+        if (Math.abs(slope_m_last_segment) < 1e-9) {
+          calculatedUncertainty = "High (Prev. Segment Flat)";
+        } else {
+          calculatedUncertainty = Math.abs(P_std_last / slope_m_last_segment);
+        }
+      }
+      if (typeof calculatedUncertainty === 'number') {
+        lastPointUncertaintyDisplay = `End-Pt. Est: ${calculatedUncertainty.toFixed(1)}`;
+        lastPointNumericalUncertainty = calculatedUncertainty;
+      } else {
+        lastPointUncertaintyDisplay = calculatedUncertainty;
+      }
+    }
+    segmentTempUncertainties.push({ temp: lastTempPoint.x, uncertainty: lastPointUncertaintyDisplay });
+
+    // Populate tempUncertaintyValues_currentMethod for charting
+    // This array must align with the `means` array
+    means.forEach(meanPoint => {
+        const foundUncertainty = segmentTempUncertainties.find(u => u.temp === meanPoint.x);
+        if (foundUncertainty) {
+            if (typeof foundUncertainty.uncertainty === 'number') {
+                tempUncertaintyValues_currentMethod.push(foundUncertainty.uncertainty);
+            } else if (meanPoint.x === lastTempPoint.x && lastPointNumericalUncertainty !== null) {
+                // Special case for the last point if its "End-Pt. Est:" was numerical
+                tempUncertaintyValues_currentMethod.push(lastPointNumericalUncertainty);
+            }
+            else {
+                tempUncertaintyValues_currentMethod.push(null); // No bar for "High", "N/A" etc.
+            }
+        } else {
+            tempUncertaintyValues_currentMethod.push(null); // Should not happen if logic is correct
+        }
+    });
+  }
+
 
   // Calculate means and standard deviations for other method if available
   let otherMethodStats = null;
@@ -1853,24 +1949,22 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
     });
 
     otherMethodStats = { means: otherMeans, stdDevs: otherStdDevs };
+    // Sort other method data as well
+    if (otherMethodStats) {
+        otherMethodStats.means.sort((a, b) => a.x - b.x);
+        otherMethodStats.stdDevs.sort((a, b) => a.x - b.x);
+    }
   }
 
-  // Sort data points by temperature for proper line connection
-  means.sort((a, b) => a.x - b.x);
-  stdDevs.sort((a, b) => a.x - b.x);
-  if (otherMethodStats) {
-    otherMethodStats.means.sort((a, b) => a.x - b.x);
-    otherMethodStats.stdDevs.sort((a, b) => a.x - b.x);
-  }
 
   // Create the plots container
   const plotsContainer = document.createElement('div');
   plotsContainer.style.cssText = 'margin-top: 40px; border-top: 1px solid #ccc; padding-top: 20px;';
   
   // Add title
-  const title = document.createElement('h3');
-  title.textContent = method;
-  plotsContainer.appendChild(title);
+  const titleElement = document.createElement('h3'); 
+  titleElement.textContent = method; 
+  plotsContainer.appendChild(titleElement);
 
   // Create flex container for plots
   const flexContainer = document.createElement('div');
@@ -1878,7 +1972,7 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
   
   // Create table container
   const tableContainer = document.createElement('div');
-  tableContainer.style.cssText = 'flex: 0 1 300px;';
+  tableContainer.style.cssText = 'flex: 0 1 400px;'; 
   
   // Create and populate table
   const table = document.createElement('table');
@@ -1889,9 +1983,10 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
   const thead = document.createElement('thead');
   thead.innerHTML = `
     <tr style="background-color: #f2f2f2;">
-      <th>Temp</th>
-      <th>Avg</th>
-      <th>ST.DEV</th>
+      <th>Temp (°C)</th>
+      <th>Avg (${method})</th>
+      <th>ST.DEV (${method})</th>
+      <th>Est. Temp. Uncert. (ΔT °C)</th>
     </tr>
   `;
   table.appendChild(thead);
@@ -1900,10 +1995,24 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
   const tbody = document.createElement('tbody');
   means.forEach((point, index) => {
     const row = document.createElement('tr');
+    const paramStdDevPoint = stdDevs.find(sd => sd.x === point.x);
+    const paramStdDev = paramStdDevPoint ? paramStdDevPoint.y.toFixed(3) : "N/A";
+    
+    const tempUncertData = segmentTempUncertainties.find(u => u.temp === point.x);
+    let tempUncertaintyDisplay = "N/A"; 
+    if (tempUncertData) {
+        if (typeof tempUncertData.uncertainty === 'number' && !(tempUncertData.uncertainty.toString().startsWith("End-Pt. Est:"))) { // Check it's not the pre-formatted string
+             tempUncertaintyDisplay = tempUncertData.uncertainty.toFixed(1);
+        } else {
+            tempUncertaintyDisplay = tempUncertData.uncertainty;
+        }
+    }
+
     row.innerHTML = `
       <td style="text-align:center">${point.x}</td>
       <td style="text-align:center">${point.y.toFixed(3)}</td>
-      <td style="text-align:center">${stdDevs[index].y.toFixed(3)}</td>
+      <td style="text-align:center">${paramStdDev}</td>
+      <td style="text-align:center">${tempUncertaintyDisplay}</td>
     `;
     tbody.appendChild(row);
   });
@@ -1949,7 +2058,7 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
   flexContainer.appendChild(chartsContainer);
   plotsContainer.appendChild(flexContainer);
 
-  // Create the charts after a short delay to ensure the canvas elements are ready
+  // Create the charts after a short delay
   setTimeout(() => {
     const chartId = `${method.replace(/[^a-zA-Z0-9]/g, '')}_Chart`;
     const comparisonChartId = `${method.replace(/[^a-zA-Z0-9]/g, '')}_ComparisonChart`;
@@ -1957,156 +2066,184 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
     const ctx = document.getElementById(chartId).getContext('2d');
     const ctxComparison = document.getElementById(comparisonChartId).getContext('2d');
 
-    // Destroy previous chart instances if they exist
-    if (window.statsCharts[chartId]) {
-      window.statsCharts[chartId].destroy();
-    }
-    if (window.statsCharts[comparisonChartId]) {
-      window.statsCharts[comparisonChartId].destroy();
+    if (window.statsCharts[chartId]) window.statsCharts[chartId].destroy();
+    if (window.statsCharts[comparisonChartId]) window.statsCharts[comparisonChartId].destroy();
+    
+    const paramErrorBarData_currentMethod = means.map(meanPoint => { // Renamed for clarity
+        const stdDevPoint = stdDevs.find(sd => sd.x === meanPoint.x);
+        return stdDevPoint ? stdDevPoint.y : 0;
+    });
+
+    let paramErrorBarData_otherMethod = null; // Renamed
+    if (otherMethodStats && otherMethodStats.means.length > 0) {
+        paramErrorBarData_otherMethod = otherMethodStats.means.map(meanPoint => {
+            const stdDevPoint = otherMethodStats.stdDevs.find(sd => sd.x === meanPoint.x);
+            return stdDevPoint ? stdDevPoint.y : 0;
+        });
     }
 
-    // Create and store new chart instances
-    window.statsCharts[chartId] = new Chart(ctx, {
+    window.statsCharts[chartId] = new Chart(ctx, { // INDIVIDUAL PLOT
       type: 'scatter',
       data: {
         datasets: [
-          {
+          { /* Individual points dataset ... */ 
             label: 'Individual',
-            data: filteredData.map(point => ({
-              x: parseFloat(point.temperature),
-              y: point.value
-            })),
-            backgroundColor: 'blue',
-            pointRadius: 2,
-            pointHoverRadius: 3,
-            showLine: false,
+            data: filteredData.map(point => ({ x: parseFloat(point.temperature), y: point.value })),
+            backgroundColor: 'blue', pointRadius: 2, pointHoverRadius: 3, showLine: false,
           },
           {
-            label: `${currentMethodName} Average ± SD`,
-            data: means,
-            borderColor: 'red',
-            backgroundColor: 'red',
-            pointRadius: 4,
-            showLine: true,
-            tension: 0.3,
+            label: `${currentMethodName} Average ± SD / ± ΔT`,
+            data: means, 
+            borderColor: 'red', backgroundColor: 'red', pointRadius: 4, showLine: true, tension: 0.3,
             errorBars: {
-              y: {
-                array: stdDevs.map(point => point.y),
-                color: 'rgba(255, 0, 0, 0.5)',
-                width: 2
+              y: { // Vertical error bars for parameter SD
+                array: paramErrorBarData_currentMethod, 
+                color: 'rgba(255, 0, 0, 0.5)', // Color of y-error bar
+                width: 2, // Thickness of y-error bar line
+                lineWidth: 1 // Thickness of y-error bar cap line (if applicable)
+              },
+              x: { // Horizontal error bars for temperature uncertainty (ΔT)
+                array: tempUncertaintyValues_currentMethod.map(val => val === null ? 0 : val), // Use 'array' for symmetric ΔT
+                color: 'rgba(0, 100, 255, 0.6)', // Distinct color for x-error bar
+                width: 2, // Thickness of x-error bar line
+                lineWidth: 1 // Thickness of x-error bar cap line
               }
             }
           },
         ],
       },
-      options: {
+      options: { /* ... existing options from your previous correct version ... */
         responsive: true,
         scales: {
-          x: {
-            type: 'linear',
-            title: { display: true, text: 'Temperature' },
-          },
-          y: {
-            type: 'linear',
-            title: { display: true, text: 'Value' },
-          },
+          x: { type: 'linear', title: { display: true, text: 'Temperature (°C)' } },
+          y: { type: 'linear', title: { display: true, text: 'Value' } },
         },
         plugins: {
           tooltip: {
             callbacks: {
               label: function(context) {
-                if (context.dataset.label === `${currentMethodName} Average ± SD`) {
-                  const index = context.dataIndex;
-                  return [
-                    `Average: ${means[index].y.toFixed(3)}`,
-                    `± SD: ${stdDevs[index].y.toFixed(3)}`
-                  ];
+                const dsLabel = context.dataset.label;
+                const idx = context.dataIndex;
+                if (dsLabel === `${currentMethodName} Average ± SD / ± ΔT`) {
+                  const meanVal = means[idx] ? means[idx].y.toFixed(3) : 'N/A';
+                  const paramSD = paramErrorBarData_currentMethod[idx] ? paramErrorBarData_currentMethod[idx].toFixed(3) : 'N/A';
+                  const tempVal = means[idx] ? means[idx].x.toFixed(0) : 'N/A';
+                  // For tooltip, directly use the numerical value if available, or lookup string
+                  const numericalTempUncert = tempUncertaintyValues_currentMethod[idx]; // This is ΔT or null
+                  
+                  let tooltipText = [`Avg ${method}: ${meanVal} ± ${paramSD} (SD)`];
+
+                  if (numericalTempUncert !== null) {
+                      tooltipText.push(`Temp: ${tempVal} ± ${numericalTempUncert.toFixed(1)} (°C ΔT)`);
+                  } else {
+                      // Fallback to the string version if numerical was null (e.g. "High", "N/A")
+                      const stringUncertData = segmentTempUncertainties.find(u => u.temp === parseFloat(tempVal));
+                      if (stringUncertData && typeof stringUncertData.uncertainty === 'string') {
+                          tooltipText.push(`Temp: ${tempVal} (${stringUncertData.uncertainty})`);
+                      } else {
+                          tooltipText.push(`Temp: ${tempVal}`);
+                      }
+                  }
+                  return tooltipText;
                 }
-                // For individual points, show name and value
-                const pointData = filteredData[context.dataIndex];
-                if (pointData) {
-                  return `${pointData.name}: ${pointData.value.toFixed(3)}`;
-                }
-                return `Value: ${context.parsed.y.toFixed(3)}`; // Fallback
+                const pointData = filteredData[idx];
+                if (pointData) return `${pointData.name}: ${pointData.value.toFixed(3)}`;
+                return `Value: ${context.parsed.y.toFixed(3)}`;
               }
             }
           }
         }
       },
     });
-    window.statsCharts[chartId].resize();
 
-    // Create comparison chart if other method data is available
-    if (otherMethodStats) {
+    if (otherMethodStats && otherMethodStats.means.length > 0 && paramErrorBarData_otherMethod) { // COMPARISON PLOT
       window.statsCharts[comparisonChartId] = new Chart(ctxComparison, {
         type: 'scatter',
         data: {
           datasets: [
-            {
-              label: `${currentMethodName} Average`,
-              data: means,
-              borderColor: 'red',
-              backgroundColor: 'red',
-              pointRadius: 4,
-              showLine: true,
-              tension: 0.3,
+            { /* Current method average dataset */
+              label: `${currentMethodName} Average`, // Simpler label for comparison chart clarity
+              data: means, borderColor: 'red', backgroundColor: 'red', pointRadius: 4, showLine: true, tension: 0.3,
               errorBars: {
-                y: {
-                  array: stdDevs.map(point => point.y),
-                  color: 'rgba(255, 0, 0, 0.5)',
-                  width: 2
+                y: { 
+                    array: paramErrorBarData_currentMethod, 
+                    color: 'rgba(255, 0, 0, 0.5)', 
+                    width: 2,
+                    lineWidth: 1
+                },
+                x: { 
+                    array: tempUncertaintyValues_currentMethod.map(val => val === null ? 0 : val), 
+                    color: 'rgba(0, 100, 255, 0.6)', 
+                    width: 2, 
+                    lineWidth: 1
                 }
               }
             },
-            {
+            { /* Other method average dataset */
               label: `${otherMethodName} Average`,
-              data: otherMethodStats.means,
-              borderColor: 'green',
-              backgroundColor: 'green',
-              pointRadius: 4,
-              showLine: true,
-              tension: 0.3,
-              errorBars: {
-                y: {
-                  array: otherMethodStats.stdDevs.map(point => point.y),
-                  color: 'rgba(0, 128, 0, 0.5)',
-                  width: 2
+              data: otherMethodStats.means, borderColor: 'green', backgroundColor: 'green', pointRadius: 4, showLine: true, tension: 0.3,
+              errorBars: { 
+                y: { 
+                    array: paramErrorBarData_otherMethod, 
+                    color: 'rgba(0, 128, 0, 0.5)', 
+                    width: 2,
+                    lineWidth: 1
                 }
+                // No x-error bars for the 'other' method in this iteration for simplicity
               }
             }
           ],
         },
-        options: {
-          responsive: true,
-          scales: {
-            x: {
-              type: 'linear',
-              title: { display: true, text: 'Temperature' },
+        options: { /* ... existing options from your previous correct version ... */
+            responsive: true,
+            scales: {
+              x: { type: 'linear', title: { display: true, text: 'Temperature (°C)' } },
+              y: { type: 'linear', title: { display: true, text: 'Value' } },
             },
-            y: {
-              type: 'linear',
-              title: { display: true, text: 'Value' },
-            },
-          },
-          plugins: {
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  const index = context.dataIndex;
-                  const isCurrentMethod = context.dataset.label.includes(currentMethodName);
-                  const meanValue = isCurrentMethod ? means[index].y : otherMethodStats.means[index].y;
-                  const stdDevValue = isCurrentMethod ? stdDevs[index].y : otherMethodStats.stdDevs[index].y;
-                  return [
-                    `${context.dataset.label}: ${meanValue.toFixed(3)}`,
-                    `± SD: ${stdDevValue.toFixed(3)}`
-                  ];
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    const dsLabel = context.dataset.label;
+                    const idx = context.dataIndex;
+                    let meanValue, paramSD, tempVal, tempUncertVal, stringUncertData;
+
+                    if (dsLabel.includes(currentMethodName)) { // Check if it's the current method's dataset
+                      meanValue = means[idx] ? means[idx].y.toFixed(3) : 'N/A';
+                      paramSD = paramErrorBarData_currentMethod[idx] ? paramErrorBarData_currentMethod[idx].toFixed(3) : 'N/A';
+                      tempVal = means[idx] ? means[idx].x.toFixed(0) : 'N/A';
+                      // For tooltip, directly use the numerical value if available for ΔT
+                      const numericalTempUncert = tempUncertaintyValues_currentMethod[idx];
+                      
+                      let tooltipText = [`${currentMethodName} Avg: ${meanValue} ± ${paramSD} (SD)`]; // Clarify method name
+                      if (numericalTempUncert !== null) {
+                          tooltipText.push(`Temp: ${tempVal} ± ${numericalTempUncert.toFixed(1)} (°C ΔT)`);
+                      } else {
+                          const stringUncertLookup = segmentTempUncertainties.find(u => u.temp === parseFloat(tempVal));
+                          if (stringUncertLookup && typeof stringUncertLookup.uncertainty === 'string') {
+                              tooltipText.push(`Temp: ${tempVal} (${stringUncertLookup.uncertainty})`);
+                          } else {
+                             tooltipText.push(`Temp: ${tempVal}`);
+                          }
+                      }
+                      return tooltipText;
+
+                    } else if (dsLabel.includes(otherMethodName)) {
+                      meanValue = otherMethodStats.means[idx] ? otherMethodStats.means[idx].y.toFixed(3) : 'N/A';
+                      paramSD = paramErrorBarData_otherMethod[idx] ? paramErrorBarData_otherMethod[idx].toFixed(3) : 'N/A';
+                      tempVal = otherMethodStats.means[idx] ? otherMethodStats.means[idx].x.toFixed(0) : 'N/A';
+                      return [`${otherMethodName} Avg: ${meanValue} ± ${paramSD} (SD)`, `Temp: ${tempVal}`];
+                    }
+                    // Fallback for any other dataset
+                    const pointData = context.chart.data.datasets[context.datasetIndex].data[idx];
+                    if(pointData && pointData.name) return `${pointData.name}: ${pointData.value.toFixed(3)}`;
+                    return `Value: ${context.parsed.y.toFixed(3)}`;
+                  }
                 }
               }
             }
-          }
         },
       });
-      window.statsCharts[comparisonChartId].resize();
     }
   }, 100);
 
@@ -2252,111 +2389,116 @@ function generateCalibrationCharts(data, method) {
     // Prepare archaeological overlay points
     let archOverlayPoints = [];
     if (window.archaeologicalFiles && window.archaeologicalFiles.length > 0) {
-      // For each archaeological sample, get the value for this parameter and find all derived temperatures
-      const statsArr = stats[param];
-      const temps = statsArr.map(pt => pt.x);
-      const means = statsArr.map(pt => pt.y);
-      const stds = statsArr.map(pt => pt.stdDev);
-      (window.archaeologicalFiles || []).forEach(fileData => {
-        const name = fileData.name;
-        let hdHg = null, dWidth = null, gWidth = null, wdWg = null;
-        // Try to calculate using the same logic as displayDerivedTemperatures
-        if (fileData.spectrumData && fileData.spectrumData.wavelengths && fileData.spectrumData.intensities) {
-          // Use the same intervals and method as in updateArchaeoPlot
-          const method = document.getElementById("analysisMethod").value;
-          const dBandWidthHeight = parseFloat(document.getElementById("dBandWidthHeight").value);
-          const gBandWidthHeight = parseFloat(document.getElementById("gBandWidthHeight").value);
-          const widthPercentages = [dBandWidthHeight / 100, gBandWidthHeight / 100];
-          const intervals = [
-            {
-              start: parseFloat(document.getElementById("peak1Start").value),
-              end: parseFloat(document.getElementById("peak1End").value),
-            },
-            {
-              start: parseFloat(document.getElementById("peak2Start").value),
-              end: parseFloat(document.getElementById("peak2End").value),
-            },
-          ];
-          const divisionPoint = getDivisionPoint(
-            fileData.spectrumData.wavelengths,
-            fileData.spectrumData.intensities,
-            intervals,
-            method
-          );
-          let plotIntervals;
-          if (method === "voigt") {
-            plotIntervals = [
-              { start: 1150, end: divisionPoint },
-              { start: divisionPoint, end: 1700 }
-            ];
-          } else {
-            plotIntervals = intervals;
-          }
-          const { topPeaks } = findTopPeaks(
-            fileData.spectrumData.wavelengths,
-            fileData.spectrumData.intensities,
-            plotIntervals,
-            widthPercentages,
-            method,
-            "archaeoSpectrumChart"
-          );
-          const d = topPeaks[0] || {};
-          const g = topPeaks[1] || {};
-          hdHg = d.height && g.height && g.height !== 0 ? d.height / g.height : null;
-          dWidth = d.width || null;
-          gWidth = g.width || null;
-          wdWg = d.width && g.width && g.width !== 0 ? d.width / g.width : null;
-        }
-        let archValue = null;
-        if (param === 'hdHg') archValue = hdHg;
-        else if (param === 'dWidth') archValue = dWidth;
-        else if (param === 'gWidth') archValue = gWidth;
-        else if (param === 'wdWg') archValue = wdWg;
-        if (archValue == null || isNaN(archValue)) return;
-
-        // Check if the archaeological value is out of range of the calibration curve (even with SD)
-        const statsArr = stats[param];
+      const statsArr = stats[param]; // stats[param] contains {x, y, stdDev} for the calibration curve
+      if (statsArr && statsArr.length > 0) { // Ensure calibration data exists for this parameter
         const temps = statsArr.map(pt => pt.x);
         const means = statsArr.map(pt => pt.y);
         const stds = statsArr.map(pt => pt.stdDev);
-        const minY = Math.min(...statsArr.map(pt => pt.y - pt.stdDev));
-        const maxY = Math.max(...statsArr.map(pt => pt.y + pt.stdDev));
-        const isOutOfRange = archValue < minY || archValue > maxY;
 
-        // Find the closest in-range temperature (edge of calibration curve)
-        let closestTemp = null;
-        if (isOutOfRange) {
-          if (archValue < minY) {
-            closestTemp = temps[0];
-          } else {
-            closestTemp = temps[temps.length - 1];
+        (window.archaeologicalFiles || []).forEach(fileData => {
+          const name = fileData.name;
+          let archValue = null;
+
+          // Calculate archValue for the current fileData and param
+          if (fileData.spectrumData && fileData.spectrumData.wavelengths && fileData.spectrumData.intensities) {
+            const currentAnalysisMethod = document.getElementById("analysisMethod").value;
+            const dBandWidthHeightVal = parseFloat(document.getElementById("dBandWidthHeight").value);
+            const gBandWidthHeightVal = parseFloat(document.getElementById("gBandWidthHeight").value);
+            const currentWidthPercentages = [dBandWidthHeightVal / 100, gBandWidthHeightVal / 100];
+            const currentIntervals = [
+              { start: parseFloat(document.getElementById("peak1Start").value), end: parseFloat(document.getElementById("peak1End").value) },
+              { start: parseFloat(document.getElementById("peak2Start").value), end: parseFloat(document.getElementById("peak2End").value) },
+            ];
+            const divisionPointVal = getDivisionPoint(
+              fileData.spectrumData.wavelengths,
+              fileData.spectrumData.intensities,
+              currentIntervals,
+              currentAnalysisMethod
+            );
+            let currentPlotIntervals;
+            if (currentAnalysisMethod === "voigt") {
+              currentPlotIntervals = [
+                { start: 1150, end: divisionPointVal },
+                { start: divisionPointVal, end: 1700 }
+              ];
+            } else {
+              currentPlotIntervals = currentIntervals;
+            }
+            const { topPeaks } = findTopPeaks(
+              fileData.spectrumData.wavelengths,
+              fileData.spectrumData.intensities,
+              currentPlotIntervals,
+              currentWidthPercentages,
+              currentAnalysisMethod,
+              "archaeoSpectrumChart" // context for findTopPeaks if it uses canvasId internally
+            );
+            const d_peak = topPeaks[0] || {};
+            const g_peak = topPeaks[1] || {};
+            
+            if (param === 'hdHg') archValue = d_peak.height && g_peak.height && g_peak.height !== 0 ? d_peak.height / g_peak.height : null;
+            else if (param === 'dWidth') archValue = d_peak.width || null;
+            else if (param === 'gWidth') archValue = g_peak.width || null;
+            else if (param === 'wdWg') archValue = d_peak.width && g_peak.width && g_peak.width !== 0 ? d_peak.width / g_peak.width : null;
           }
-        }
 
-        // Find all derived temperatures for this value
-        const results = findTemperaturesForValue(temps, means, stds, archValue);
-        if (isOutOfRange) {
-          // For out-of-range points, plot at the closest temperature
-          archOverlayPoints.push({
-            x: closestTemp,
-            y: archValue,
-            name,
-            isOutOfRange: true,
-            closestTemp
-          });
-        } else if (results.length > 0) {
-          // For in-range points, plot at all derived temperatures
-          results.forEach(r => {
+          if (archValue == null || isNaN(archValue)) return; // Skip if value cannot be determined
+
+          const minY_calib_band = Math.min(...statsArr.map(pt => pt.y - pt.stdDev));
+          const maxY_calib_band = Math.max(...statsArr.map(pt => pt.y + pt.stdDev));
+          const isArchValueOutOfRange = archValue < minY_calib_band || archValue > maxY_calib_band;
+          
+          let closestTempForTooltip;
+          let x_coord_for_plot;
+
+          if (isArchValueOutOfRange) {
+            if (temps.length > 0) { // Ensure temps array is not empty
+                if (archValue < minY_calib_band) {
+                    x_coord_for_plot = temps[0];
+                    closestTempForTooltip = temps[0];
+                } else {
+                    x_coord_for_plot = temps[temps.length - 1];
+                    closestTempForTooltip = temps[temps.length - 1];
+                }
+            } else { // Fallback if temps is empty, though unlikely if statsArr is populated
+                x_coord_for_plot = 0; 
+                closestTempForTooltip = 0;
+            }
             archOverlayPoints.push({
-              x: r.temperature,
+              x: x_coord_for_plot,
               y: archValue,
               name,
-              isOutOfRange: false,
-              closestTemp: null
+              style: 'outOfRange',
+              closestTemp: closestTempForTooltip 
             });
-          });
-        }
-      });
+          } else {
+            const meanLineIntersections = findTemperaturesForValue(temps, means, stds, archValue);
+            
+            if (meanLineIntersections.length > 0) {
+              meanLineIntersections.forEach(intersection => {
+                archOverlayPoints.push({
+                  x: intersection.temperature,
+                  y: archValue,
+                  name,
+                  style: 'onMeanLine',
+                });
+              });
+            } else {
+              // Not out of range, and no mean line intersections.
+              // This implies it must be within an SD band.
+              const sdBandRanges = findTemperatureRangesWithinSD(temps, means, stds, archValue);
+              sdBandRanges.forEach(sdRange => {
+                const midPointTemp = (sdRange.start + sdRange.end) / 2;
+                archOverlayPoints.push({
+                  x: midPointTemp,
+                  y: archValue,
+                  name,
+                  style: 'inSdOnly',
+                });
+              });
+            }
+          }
+        });
+      }
     }
 
     // Prepare data for mean line and SD bands
@@ -2474,21 +2616,27 @@ function generateCalibrationCharts(data, method) {
             label: 'Archaeological Sample(s)',
             data: archOverlayPoints,
             backgroundColor: function(context) {
-              return context.raw.isOutOfRange ? 'white' : 'blue';
+              const style = context.raw.style;
+              if (style === 'outOfRange') return 'white';
+              if (style === 'inSdOnly') return 'rgba(0, 0, 0, 0)'; // Transparent fill
+              return 'blue'; // onMeanLine
             },
             borderColor: 'blue',
             pointRadius: 7,
             showLine: false,
             pointStyle: function(context) {
-              return context.raw.isOutOfRange ? 'circle' : 'rectRot';
+              const style = context.raw.style;
+              if (style === 'outOfRange') return 'circle';
+              return 'rectRot'; // for onMeanLine and inSdOnly
             },
             borderDash: function(context) {
-              return context.raw.isOutOfRange ? [5, 5] : [];
+              const style = context.raw.style;
+              return style === 'outOfRange' ? [5, 5] : [];
             },
-            borderWidth: 2,
+            borderWidth: 2, // Ensure border is visible for inSdOnly
             hoverRadius: 9,
-            parsing: false, // Assuming this is still needed from previous context
-            datalabels: { // This plugin might not be active, but keeping structure
+            parsing: false, 
+            datalabels: { 
               align: 'top',
               anchor: 'end',
               color: 'blue',
@@ -2497,7 +2645,7 @@ function generateCalibrationCharts(data, method) {
                 return value.name || '';
               }
             },
-            order: 0 // Drawn on top of everything
+            order: 0 
         });
       }
       
@@ -2526,22 +2674,24 @@ function generateCalibrationCharts(data, method) {
               callbacks: {
                 label: function(context) {
                   if (context.dataset.label === 'Archaeological Sample(s)') {
-                    if (context.raw.isOutOfRange) {
-                      return `${context.raw.name || ''}: Out of range (closest: ${context.raw.closestTemp.toFixed(0)}°C)`;
+                    const point = context.raw;
+                    if (point.style === 'outOfRange') {
+                      return `${point.name || ''}: ${point.y.toFixed(2)} (Out of range, closest: ${point.closestTemp ? point.closestTemp.toFixed(0) : 'N/A'}°C)`;
                     }
-                    return `${context.raw.name || ''}: (${context.raw.x.toFixed(0)}, ${context.raw.y.toFixed(2)})`;
+                    // For 'onMeanLine' and 'inSdOnly'
+                    return `${point.name || ''}: (${point.x.toFixed(0)}, ${point.y.toFixed(2)})`;
                   }
                   // Tooltip for points on the mean line (original dataset)
-                  if (context.dataset.label === 'Calibration Mean') { // Matches new label
-                     const index = context.dataIndex;
-                     // Ensure stats[param][index] is valid before accessing
-                     if (stats[param] && stats[param][index]) {
-                        return [
-                          `Mean: ${stats[param][index].y.toFixed(3)} (Temp: ${stats[param][index].x.toFixed(0)})`,
-                          `± SD: ${stats[param][index].stdDev.toFixed(3)}`
-                        ];
-                     }
-                     return `Mean: ${context.parsed.y.toFixed(3)}`; // Fallback
+                  if (context.dataset.label === 'Calibration Mean') { 
+                    const index = context.dataIndex;
+                    // Ensure stats[param][index] is valid before accessing
+                    if (stats[param] && stats[param][index]) {
+                      return [
+                        `Mean: ${stats[param][index].y.toFixed(3)} (Temp: ${stats[param][index].x.toFixed(0)})`,
+                        `± SD: ${stats[param][index].stdDev.toFixed(3)}`
+                      ];
+                    }
+                    return `Mean: ${context.parsed.y.toFixed(3)}`; // Fallback
                   }
                   // Tooltip for the band itself (upper SD line hover)
                   if (context.dataset.label === 'Calibration Range (Mean ± SD)') {
