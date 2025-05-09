@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Methodology - Raman Paleothermometer</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+        h1, h2, h3, h4 { color: #333; }
+        h1 { border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        h2 { margin-top: 30px; border-bottom: 1px solid #eee; padding-bottom: 5px;}
+        h3 { margin-top: 20px; }
+        p, li { color: #555; }
+        ul { margin-left: 20px; }
+        code { background-color: #f4f4f4; padding: 2px 4px; border-radius: 4px; font-family: monospace; }
+        .container { max-width: 900px; margin: auto; }
+        .math-formula {
+            display: block;
+            text-align: center;
+            margin: 20px 0;
+            font-style: italic;
+            font-size: 1.1em;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <div class="tabBar">
+      <a href="index.html#experimental" id="tabExperimental" class="tabButton" style="text-decoration: none; padding: 10px 15px;">Experimental</a>
+      <a href="index.html#archaeological" id="tabArchaeological" class="tabButton" style="text-decoration: none; padding: 10px 15px;">Archaeological</a>
+      <a href="methods.html" id="tabMethods" class="tabButton active" style="text-decoration: none; padding: 10px 15px;">Methods</a>
+    </div>
+    <div class="container">
+        <h1>Methodology</h1>
+        <p>This document outlines the methods and mathematical principles employed in the Raman Spectroscopy Paleothermometer web application. The application is designed to analyze Raman spectra from carbonaceous materials to estimate their formation temperatures, a technique particularly useful in archaeological and geological contexts.</p>
+
+        <p>The application features a dual-tab interface: one for analyzing experimental data to build calibration models, and another for applying these models to archaeological samples of unknown thermal history.</p>
+
+        <a href="index.html#experimental">Back to App</a>
+
+        <h2>I. Experimental Data Tab: Calibration Model Construction</h2>
+        <p>The primary goal of the Experimental Data Tab is to process Raman spectra from samples with known firing temperatures and establish calibration curves. These curves relate specific Raman spectral parameters to temperature.</p>
+
+        <h3>1. Data Input and Parsing</h3>
+        <ul>
+            <li>Users upload one or more spectrum files (<code>.txt</code> format). Each file is expected to contain two columns: Raman shift (cm<sup>-1</sup>) and intensity, typically tab-separated.</li>
+            <li>The application parses these files, extracting wavelength and intensity data.</li>
+            <li>Temperatures are typically extracted from filenames if they follow a discernible pattern (e.g., containing "XXX°C" or "XXXK").</li>
+        </ul>
+
+        <h3>2. Peak Detection and Characterization</h3>
+        <p>The D and G bands, characteristic of carbonaceous materials, are the primary focus. Two analytical methods are provided:</p>
+
+        <h4>a. Simple (Moving Average) Method</h4>
+        <ul>
+            <li><strong>Peak Identification:</strong> Within user-defined wavelength intervals for the D and G bands, the peak is identified as the point with the maximum intensity. This is a straightforward approach that does not involve curve fitting.</li>
+            <li><strong>Width Calculation (<code>calculatePeakWidth</code>):</strong> The width of each peak (D and G) is calculated at a user-defined percentage of the peak's height. The process involves:
+                <ol>
+                    <li>Determining the target intensity level (e.g., 50% of maximum peak intensity).</li>
+                    <li>Searching outwards from the peak center (wavelength of maximum intensity) to find the wavelengths on both sides of the peak where the spectrum's intensity crosses this target level.</li>
+                    <li>The difference between these two wavelengths is reported as the peak width. Linear interpolation is used for more precise crossing points if the exact target height is not a data point.</li>
+                </ol>
+            </li>
+            <li><strong>Parameters Calculated:</strong>
+                <ul>
+                    <li>Peak Position (cm<sup>-1</sup>) for D and G bands.</li>
+                    <li>Peak Height (intensity units) for D and G bands.</li>
+                    <li>Peak Width (cm<sup>-1</sup>) for D and G bands at user-defined % height.</li>
+                    <li>HD/HG: Ratio of D band height to G band height.</li>
+                    <li>WD/WG: Ratio of D band width to G band width.</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h4>b. Voigt + Savitzky-Golay Method</h4>
+        <p>This method involves spectral smoothing followed by fitting a Pseudo-Voigt profile to the D and G bands.</p>
+        <ul>
+            <li><strong>Data Preprocessing - Savitzky-Golay Smoothing (<code>savitzkyGolaySmooth</code>):</strong>
+                <ul>
+                    <li>The raw intensity data is first smoothed using the Savitzky-Golay (SG) algorithm. This is a digital filter that fits a low-degree polynomial to successive subsets of adjacent data points.</li>
+                    <li><strong>Purpose:</strong> To reduce noise in the spectrum without significantly distorting the signal, which aids in more stable peak fitting.</li>
+                    <li><strong>Implementation:</strong> The application uses a fixed window size (e.g., 11 points) and polynomial order (e.g., 2nd order).
+                        <span class="math-formula">
+                            g<sub>i</sub> = &sum;<sub>k=-m</sub><sup>m</sup> c<sub>k</sub> f<sub>i+k</sub>
+                        </span>
+                        Where <code>g<sub>i</sub></code> is the smoothed data point, <code>f<sub>i+k</sub></code> are the original data points in the window, <code>c<sub>k</sub></code> are the SG filter coefficients, and the window size is <code>2m+1</code>.
+                    </li>
+                    <li>The SG coefficients (<code>c<sub>k</sub></code>) are pre-calculated based on the chosen window size and polynomial order. This involves matrix operations (<code>computeSavitzkyGolayCoefficients</code>), specifically solving a least-squares problem:
+                        <span class="math-formula">
+                            C = (X<sup>T</sup>X)<sup>-1</sup>X<sup>T</sup>
+                        </span>
+                        The coefficients for smoothing are the first row of matrix <code>C</code>.
+                    </li>
+                </ul>
+            </li>
+            <li><strong>Peak Interval Definition (<code>getDivisionPoint</code>):</strong>
+                <ul>
+                    <li>Initial D and G peak centers are approximated within user-defined narrow intervals on the (potentially smoothed) spectrum.</li>
+                    <li>A "division point" or valley is then identified in the spectrum between the D and G peak centers. This is the point of minimum intensity between the D and G bands.</li>
+                    <li>This division point is used to define broader intervals for the Voigt fitting (e.g., D band: 1150 cm<sup>-1</sup> to division point; G band: division point to 1700 cm<sup>-1</sup>). This ensures that each peak is fitted largely independently of the other, using a wider portion of the spectrum around the peak.</li>
+                </ul>
+            </li>
+            <li><strong>Peak Fitting - Pseudo-Voigt Profile (<code>fitPseudoVoigt</code>, <code>pseudoVoigt</code>):</strong>
+                <ul>
+                    <li>Each band (D and G) within its defined broad interval is fitted with a Pseudo-Voigt function. This function is a linear combination of Gaussian and Lorentzian profiles.
+                        <span class="math-formula">
+                            PV(x; A, &mu;, &sigma;, &gamma;, &eta;) = &eta; L(x; A, &mu;, &gamma;) + (1 - &eta;) G(x; A, &mu;, &sigma;)
+                        </span>
+                        Where:
+                        <ul>
+                            <li><code>L(x; A, &mu;, &gamma;) = A * (&gamma;<sup>2</sup> / ((x - &mu;)<sup>2</sup> + &gamma;<sup>2</sup>))</code> (Lorentzian)</li>
+                            <li><code>G(x; A, &mu;, &sigma;) = A * exp(-(x - &mu;)<sup>2</sup> / (2&sigma;<sup>2</sup>))</code> (Gaussian)</li>
+                            <li><code>A</code> is the amplitude (peak height).</li>
+                            <li><code>&mu;</code> is the peak center (wavelength).</li>
+                            <li><code>&sigma;</code> is related to the Gaussian width (standard deviation).</li>
+                            <li><code>&gamma;</code> is the half-width at half-maximum (HWHM) of the Lorentzian component.</li>
+                            <li><code>&eta;</code> is the mixing parameter (0 for pure Gaussian, 1 for pure Lorentzian).</li>
+                        </ul>
+                    </li>
+                    <li><strong>Fitting Algorithm:</strong> A numerical optimization (gradient descent-like iterative approach) is used to find the Pseudo-Voigt parameters (<code>A, &mu;, &sigma;, &gamma;, &eta;</code>) that best fit the smoothed spectral data within the broad interval. The algorithm iteratively adjusts parameters to minimize the sum of squared differences between the fitted curve and the spectral data. Initial guesses for parameters are derived from the smoothed data (e.g., max intensity for <code>A</code>, corresponding wavelength for <code>&mu;</code>). <code>&eta;</code> is typically constrained (e.g., 0.2 to 0.9).</li>
+                </ul>
+            </li>
+             <li><strong>Width Calculation (<code>findWidthAtHeightVoigt</code>):</strong>
+                <ul>
+                    <li>After fitting, the peak width is determined from the fitted Pseudo-Voigt curve at a height specified by the user (percentage of the fitted peak's amplitude <code>A</code>).</li>
+                    <li>This involves finding the two x-values (wavelengths) on either side of the fitted peak center (<code>&mu;</code>) where the Pseudo-Voigt function equals the target height. The difference between these x-values is the reported width.
+                    <li>This is done by numerically solving <code>PV(x) = target_height</code> for <code>x</code> on both sides of <code>&mu;</code>. Linear interpolation may be used between finely stepped points on the fitted curve to improve accuracy.
+                    <li>An approximate Full Width at Half Maximum (FWHM) of the Voigt profile (<code>approximateVoigtFWHM</code>) is also calculated as <code>&eta; * (2&gamma;) + (1 - &eta;) * (2&sigma; * sqrt(2 * ln(2)))</code> and can serve as a fallback or reference.</li>
+                </ul>
+            </li>
+            <li><strong>Parameters Calculated (from fitted curves):</strong>
+                <ul>
+                    <li>Peak Position (<code>&mu;</code>) for D and G bands.</li>
+                    <li>Peak Height (<code>A</code>) for D and G bands.</li>
+                    <li>Peak Width (cm<sup>-1</sup>) for D and G bands, calculated from the fitted profile at user-defined % height.</li>
+                    <li>HD/HG: Ratio of fitted D band height to G band height.</li>
+                    <li>WD/WG: Ratio of fitted D band width to G band width.</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h3>3. Statistical Analysis and Calibration (<code>displayPeakInfo</code>, <code>generateStatsPlot</code>)</h3>
+        <ul>
+            <li>Data from multiple experimental samples (selected by the user via checkboxes) are grouped by their known firing temperatures.</li>
+            <li>For each temperature group and for each calculated parameter (HD/HG, D Width, G Width, WD/WG), the application calculates:
+                <ul>
+                    <li><strong>Average (Mean):</strong> The arithmetic mean of the parameter values.</li>
+                    <li><strong>Standard Deviation (SD):</strong> A measure of the dispersion of parameter values around the mean.
+                        <span class="math-formula">
+                            SD = &radic;(&sum;(x<sub>i</sub> - x&#772;)<sup>2</sup> / N)
+                        </span>
+                    </li>
+                </ul>
+            </li>
+            <li><strong>Calibration Plots:</strong> Scatter plots are generated for each parameter, plotting the mean parameter value against temperature.
+                <ul>
+                    <li>Individual data points are shown.</li>
+                    <li>Mean values for each temperature group are plotted, often connected by a line to show trends.</li>
+                    <li>Vertical error bars represent the standard deviation of the parameter at each temperature.</li>
+                    <li><strong>Estimated Temperature Uncertainty (ΔT):</strong> Horizontal error bars are also displayed on the calibration plots. This ΔT represents the uncertainty in estimating temperature from a given parameter value. It is calculated for each segment of the calibration curve (between two adjacent temperature points) as:
+                        <span class="math-formula">
+                            &Delta;T<sub>segment</sub> = | (SD<sub>P,avg</sub>) / m |
+                        </span>
+                        Where:
+                        <ul>
+                            <li><code>SD<sub>P,avg</sub></code> is the average standard deviation of the parameter for the two temperature points defining the segment.</li>
+                            <li><code>m</code> is the slope of the line connecting the mean parameter values of these two temperature points ( (P<sub>2</sub> - P<sub>1</sub>) / (T<sub>2</sub> - T<sub>1</sub>) ).</li>
+                            <li>If the slope <code>m</code> is very small (flat segment), ΔT is reported as "High" or "Uncertain". For the last point, ΔT is extrapolated from the preceding segment.</li>
+                        </ul>
+                    </li>
+                </ul>
+            </li>
+            <li>The collection of these means and standard deviations for each parameter across all temperatures forms the `window.calibrationStats` object, which is crucial for the Archaeological Samples Tab.</li>
+        </ul>
+
+        <h3>4. Method Comparison (<code>compareMethods</code>)</h3>
+        <ul>
+            <li>A statistical comparison between the "Simple" and "Voigt" methods is performed using a paired t-test.</li>
+            <li>For each parameter, the differences between values obtained by the two methods for the same sample are calculated.</li>
+            <li>The t-statistic is calculated as:
+                <span class="math-formula">
+                    t = (mean_diff) / (std_dev_diff / &radic;N)
+                </span>
+                Where <code>mean_diff</code> is the average of the differences, <code>std_dev_diff</code> is the standard deviation of the differences, and <code>N</code> is the number of paired samples.
+            </li>
+            <li>A p-value is estimated from the t-statistic and degrees of freedom (N-1) using an approximation of the t-distribution's cumulative distribution function (CDF) (<code>tDistApproxCDF</code>).</li>
+            <li>Significance is typically flagged if p < 0.05.</li>
+        </ul>
+
+        <h2>II. Archaeological Samples Tab: Temperature Estimation</h2>
+        <p>This tab allows users to upload spectra from archaeological samples with unknown firing temperatures and estimate these temperatures using the calibration models built in the Experimental Data Tab.</p>
+
+        <h3>1. Data Input and Peak Analysis</h3>
+        <ul>
+            <li>Users upload spectra for archaeological samples.</li>
+            <li>The <strong>same analysis pipeline settings</strong> (method choice: Simple or Voigt, peak search intervals, width % height) as currently configured in the Experimental Data Tab are applied to analyze these archaeological spectra. This ensures consistency. The `window.calibrationStats` derived from the experimental tab are used as the reference.</li>
+            <li>The D and G peak parameters (heights, widths, ratios) are calculated for each archaeological sample.</li>
+        </ul>
+
+        <h3>2. Temperature Derivation (<code>displayDerivedTemperatures</code>)</h3>
+        <p>For each archaeological sample and each relevant parameter (HD/HG, D Width, G Width, WD/WG), temperatures are derived using the calibration statistics (`window.calibrationStats`) from the Experimental Tab.</p>
+        <ul>
+            <li><strong>"Best Estimate" Temperature (<code>findTemperaturesForValue</code>):</strong>
+                <ul>
+                    <li>This function attempts to find temperatures where the archaeological sample's parameter value intersects the <em>mean calibration curve</em> (the piecewise linear curve connecting the mean parameter values at known experimental temperatures).</li>
+                    <li>For each segment of the mean calibration curve (between T<sub>i</sub> and T<sub>i+1</sub>):
+                        <ul>
+                            <li>If the archaeological sample's parameter value falls between the mean parameter values MeanP<sub>i</sub> and MeanP<sub>i+1</sub>, a temperature is interpolated linearly.
+                                <span class="math-formula">
+                                    T<sub>derived</sub> = T<sub>i</sub> + (Value<sub>arch</sub> - MeanP<sub>i</sub>) * (T<sub>i+1</sub> - T<sub>i</sub>) / (MeanP<sub>i+1</sub> - MeanP<sub>i</sub>)
+                                </span>
+                            </li>
+                            <li>The uncertainty (ΔT) for this derived temperature is calculated based on the local slope of the calibration curve and the interpolated standard deviation of the <em>parameter</em> at T<sub>derived</sub>:
+                                <span class="math-formula">
+                                    &Delta;T = | SD<sub>P_at_T_derived</sub> / slope<sub>local</sub> |
+                                </span>
+                                If the local slope is near zero (flat segment), ΔT is reported as "Uncertain" (or a very high placeholder value like 9999).
+                            </li>
+                        </ul>
+                    </li>
+                    <li>If multiple intersections occur (e.g., for non-monotonic calibration curves), all are reported.</li>
+                    <li>If the value does not intersect the mean line but falls within an SD band (see below), the "best estimate" might reflect the midpoint of the temperature range where it's within that band.</li>
+                </ul>
+            </li>
+            <li><strong>"Possible Range" Temperatures (<code>findTemperatureRangesWithinSD</code>):</strong>
+                <ul>
+                    <li>This function identifies temperature intervals where the archaeological sample's parameter value falls within the <em>mean ± standard deviation band</em> of the calibration curve.</li>
+                    <li>It iterates through each segment of the calibration curve (defined by T<sub>i</sub>, MeanP<sub>i</sub>, SD<sub>P,i</sub> and T<sub>i+1</sub>, MeanP<sub>i+1</sub>, SD<sub>P,i+1</sub>).</li>
+                    <li>For each segment, it determines the temperature sub-intervals where Value<sub>arch</sub> is between (MeanP - SD<sub>P</sub>) and (MeanP + SD<sub>P</sub>). This involves finding intersection points of Value<sub>arch</sub> with the upper SD boundary line and the lower SD boundary line.
+                        <ul>
+                           <li>The lines for MeanP - SD<sub>P</sub> and MeanP + SD<sub>P</sub> are themselves piecewise linear between experimental temperature points.</li>
+                        </ul>
+                    </li>
+                    <li>All such valid sub-intervals across all segments are collected.</li>
+                    <li>These collected intervals are then sorted and merged if they overlap or are adjacent.</li>
+                    <li>The final merged ranges are typically rounded (e.g., to the nearest 100°C) for reporting.</li>
+                </ul>
+            </li>
+            <li><strong>Out-of-Range Values:</strong>
+                <ul>
+                    <li>If an archaeological sample's parameter value is entirely outside the (Mean ± SD) band of the calibration curve, it's reported as "Out of range".</li>
+                    <li>In such cases, the "closest" temperature on the calibration curve (at the edge of the SD band) is often indicated. For "Best Estimate", this might be T<sub>min</sub> or T<sub>max</sub> of the calibration range; for "Possible Range", it's simply "Out of range".</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h3>3. Visualization of Archaeological Data</h3>
+        <ul>
+            <li>The spectrum of the selected archaeological sample is displayed, with peak annotations similar to the experimental tab.</li>
+            <li>Derived temperatures (best estimates and ranges) are presented in a summary table for all uploaded archaeological samples and all parameters.</li>
+            <li><strong>Overlay on Calibration Charts (<code>generateCalibrationCharts</code>):</strong>
+                <ul>
+                    <li>Archaeological sample data points are overlaid onto the calibration charts. Each point is plotted with its parameter value (y-axis) against its derived temperature(s) (x-axis).</li>
+                    <li>Distinct visual styles are used:
+                        <ul>
+                            <li><strong>Solid markers:</strong> If the parameter value intersects the mean calibration line. The x-coordinate is the T<sub>derived</sub> from `findTemperaturesForValue`.</li>
+                            <li><strong>Hollow markers with solid border:</strong> If the value is within an SD band but does not cross the mean line. The x-coordinate is typically the midpoint of the temperature range found by `findTemperatureRangesWithinSD`.</li>
+                            <li><strong>Hollow markers with dashed border:</strong> If the value is out of the overall calibration range (mean ± SD). The x-coordinate is the closest temperature at the edge of the calibration's SD band.</li>
+                        </ul>
+                    </li>
+                    <li>Tooltips provide details for these overlaid points.</li>
+                    <li>The Y-axis of calibration charts dynamically adjusts to ensure all data, including out-of-range archaeological samples, are visible.</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h2>III. General Mathematical and Statistical Concepts</h2>
+        <ul>
+            <li><strong>Linear Interpolation:</strong> Used in several places, e.g., to find precise peak width crossing points, to interpolate SD values at derived temperatures, and to calculate derived temperatures themselves.
+                <span class="math-formula">
+                    y = y<sub>0</sub> + (x - x<sub>0</sub>) * (y<sub>1</sub> - y<sub>0</sub>) / (x<sub>1</sub> - x<sub>0</sub>)
+                </span>
+            </li>
+            <li><strong>Mean, Standard Deviation:</strong> Standard statistical measures used for describing parameter distributions at known temperatures and for error propagation.</li>
+        </ul>
+
+        <a href="index.html#experimental">Back to App</a>
+    </div>
+</body>
+</html>

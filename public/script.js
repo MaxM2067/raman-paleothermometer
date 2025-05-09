@@ -1,23 +1,145 @@
 let allFilesData = [];
 let displayedFileIndex = 0;
 let includedSamples = new Set(); // Track which samples are included in calculations
+let archaeologicalFiles = [];
+let selectedArchaeoIndex = 0;
+
+// Add this flag at the top of your script
+let isLoadingState = false;
 
 if (!window.statsCharts) window.statsCharts = {};
+if (!window.myCharts) window.myCharts = {}; // Ensure this is also initialized if not already
+
+// Add this new function
+function saveAppState() {
+    if (isLoadingState) {
+        console.log("Skipping saveAppState during load phase.");
+        return;
+    }
+
+    const state = {
+        allFilesData: allFilesData,
+        displayedFileIndex: displayedFileIndex,
+        archaeologicalFiles: archaeologicalFiles,
+        selectedArchaeoIndex: selectedArchaeoIndex,
+        includedSamples: Array.from(includedSamples), // Convert Set to Array for JSON
+        uiSettings: {
+            analysisMethod: document.getElementById("analysisMethod")?.value,
+            peak1Mode: document.getElementById("peak1Mode")?.value,
+            peak1Start: document.getElementById("peak1Start")?.value,
+            peak1End: document.getElementById("peak1End")?.value,
+            peak2Start: document.getElementById("peak2Start")?.value,
+            peak2End: document.getElementById("peak2End")?.value,
+            dBandWidthHeight: document.getElementById("dBandWidthHeight")?.value,
+            gBandWidthHeight: document.getElementById("gBandWidthHeight")?.value,
+            showSmoothing: document.getElementById("showSmoothing")?.checked,
+            showFitting: document.getElementById("showFitting")?.checked,
+            archaeoShowSmoothing: document.getElementById("archaeoShowSmoothing")?.checked,
+            archaeoShowFitting: document.getElementById("archaeoShowFitting")?.checked,
+        }
+    };
+    try {
+        sessionStorage.setItem('ramanAppState', JSON.stringify(state));
+        console.log("App state saved.");
+    } catch (e) {
+        console.error("Error saving app state to session storage:", e);
+    }
+}
+
+// Add this new function
+function loadAppState() {
+    isLoadingState = true;
+    try {
+        const storedState = sessionStorage.getItem('ramanAppState');
+        if (storedState) {
+            const state = JSON.parse(storedState);
+            console.log("Loading app state:", state);
+
+            allFilesData = state.allFilesData || [];
+            displayedFileIndex = state.displayedFileIndex || 0;
+            archaeologicalFiles = state.archaeologicalFiles || [];
+            window.archaeologicalFiles = archaeologicalFiles; // Ensure global window object is updated if used directly
+            selectedArchaeoIndex = state.selectedArchaeoIndex || 0;
+            includedSamples = new Set(state.includedSamples || []);
+
+            if (state.uiSettings) {
+                const settings = state.uiSettings;
+                const setValue = (id, value) => { const el = document.getElementById(id); if (el && value !== undefined && value !== null) el.value = value; };
+                const setChecked = (id, checked) => { const el = document.getElementById(id); if (el && checked !== undefined && checked !== null) el.checked = checked; };
+
+                setValue("analysisMethod", settings.analysisMethod);
+                setValue("peak1Mode", settings.peak1Mode);
+                setValue("peak1Start", settings.peak1Start);
+                setValue("peak1End", settings.peak1End);
+                setValue("peak2Start", settings.peak2Start);
+                setValue("peak2End", settings.peak2End);
+                setValue("dBandWidthHeight", settings.dBandWidthHeight);
+                setValue("gBandWidthHeight", settings.gBandWidthHeight);
+
+                setChecked("showSmoothing", settings.showSmoothing);
+                setChecked("showFitting", settings.showFitting);
+                setChecked("archaeoShowSmoothing", settings.archaeoShowSmoothing);
+                setChecked("archaeoShowFitting", settings.archaeoShowFitting);
+            }
+
+            const fileSelector = document.getElementById("fileSelector");
+            if (fileSelector) {
+                fileSelector.innerHTML = "";
+                allFilesData.forEach((fileData, index) => {
+                    const option = document.createElement("option");
+                    option.value = index;
+                    option.textContent = fileData.name;
+                    fileSelector.appendChild(option);
+                });
+                if (allFilesData.length > 0 && displayedFileIndex < allFilesData.length) {
+                    fileSelector.value = displayedFileIndex;
+                } else if (allFilesData.length > 0) {
+                    fileSelector.value = 0;
+                    displayedFileIndex = 0;
+                }
+            }
+
+            const archaeoFileSelector = document.getElementById("archaeoFileSelector");
+            if (archaeoFileSelector) {
+                archaeoFileSelector.innerHTML = "";
+                archaeologicalFiles.forEach((fileData, index) => {
+                    const option = document.createElement("option");
+                    option.value = index;
+                    option.textContent = fileData.name;
+                    archaeoFileSelector.appendChild(option);
+                });
+                if (archaeologicalFiles.length > 0 && selectedArchaeoIndex < archaeologicalFiles.length) {
+                    archaeoFileSelector.value = selectedArchaeoIndex;
+                } else if (archaeologicalFiles.length > 0) {
+                    archaeoFileSelector.value = 0;
+                    selectedArchaeoIndex = 0;
+                }
+            }
+            console.log("App state loaded successfully from session storage.");
+        } else {
+            console.log("No app state found in session storage.");
+        }
+    } catch (e) {
+        console.error("Error loading app state from session storage:", e);
+    } finally {
+        isLoadingState = false;
+    }
+}
 
 document.addEventListener("DOMContentLoaded", () => {
-  updatePeak1Inputs();
+  loadAppState(); // Load state first thing
+
+  updatePeak1Inputs(); // This will now use loaded values if present
 
   // Add event listeners for method and mode selectors in both tabs
   document.getElementById("analysisMethod").addEventListener("change", () => {
-    // If Voigt is selected, set mode to broad and update intervals
     if (document.getElementById("analysisMethod").value === "voigt") {
       document.getElementById("peak1Mode").value = "broad";
-      // This will update the D peak interval inputs to broad values
-      updatePeak1Inputs();
+      updatePeak1Inputs(); // This updates D peak inputs and calls updateDisplayedFile
+    } else {
+      updateDisplayedFile(); // If not Voigt, still update display based on simple method
     }
-
-    // Update both tabs
-    updateDisplayedFile();
+    saveAppState();
   });
 
   // Add event listeners for smoothing/fitting checkboxes in both tabs
@@ -30,27 +152,28 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
           updateDisplayedFile();
         }
+        saveAppState();
       });
     }
   });
 
   // Add event listeners for width height inputs in both tabs
-  ["dBandWidthHeight", "gBandWidthHeight", "archaeoDBandWidthHeight", "archaeoGBandWidthHeight"].forEach(id => {
+  // These are the experimental tab controls which affect both tabs
+  ["dBandWidthHeight", "gBandWidthHeight"].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener("input", () => {
-        if (id.startsWith("archaeo")) {
-          updateArchaeoPlot();
-        } else {
-          updateDisplayedFile();
-        }
+        // No specific archaeo/experimental split needed here as these controls
+        // from the experimental tab are used globally.
+        updateDisplayedFile(); // This will also trigger archaeo updates if necessary via updateArchaeoPlot
+        saveAppState();
       });
     }
   });
 
   document.getElementById("peak1Mode").addEventListener("change", () => {
-    updatePeak1Inputs();
-    updateDisplayedFile();
+    updatePeak1Inputs(); // This calls updateDisplayedFile if data exists
+    saveAppState();
   });
 
   // Add event listeners for peak interval inputs
@@ -59,6 +182,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (el) {
       el.addEventListener("input", () => {
         updateDisplayedFile();
+        saveAppState();
       });
     }
   });
@@ -68,7 +192,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const selector = document.getElementById("fileSelector");
     if (selector.selectedIndex > 0) {
       selector.selectedIndex--;
+      displayedFileIndex = parseInt(selector.value);
       updateDisplayedFile();
+      saveAppState();
     }
   });
 
@@ -76,16 +202,31 @@ document.addEventListener("DOMContentLoaded", () => {
     const selector = document.getElementById("fileSelector");
     if (selector.selectedIndex < selector.options.length - 1) {
       selector.selectedIndex++;
+      displayedFileIndex = parseInt(selector.value);
       updateDisplayedFile();
+      saveAppState();
     }
   });
+  
+  // File selector change listener for experimental tab
+  const expFileSelector = document.getElementById("fileSelector");
+  if (expFileSelector) {
+      expFileSelector.addEventListener("change", () => {
+          displayedFileIndex = parseInt(expFileSelector.value);
+          updateDisplayedFile();
+          saveAppState();
+      });
+  }
+
 
   // Add navigation button event listeners for archaeological tab
   document.getElementById("archaeoPrevFile").addEventListener("click", () => {
     const selector = document.getElementById("archaeoFileSelector");
     if (selector.selectedIndex > 0) {
       selector.selectedIndex--;
+      selectedArchaeoIndex = parseInt(selector.value);
       updateArchaeoPlot();
+      saveAppState();
     }
   });
 
@@ -93,13 +234,27 @@ document.addEventListener("DOMContentLoaded", () => {
     const selector = document.getElementById("archaeoFileSelector");
     if (selector.selectedIndex < selector.options.length - 1) {
       selector.selectedIndex++;
+      selectedArchaeoIndex = parseInt(selector.value);
       updateArchaeoPlot();
+      saveAppState();
     }
   });
+  
+  // File selector change listener for archaeological tab
+  const archFileSelector = document.getElementById("archaeoFileSelector");
+  if (archFileSelector) {
+      archFileSelector.addEventListener("change", () => {
+          selectedArchaeoIndex = parseInt(archFileSelector.value);
+          updateArchaeoPlot();
+          saveAppState();
+      });
+  }
 
   // Add event listener for the Update Peaks button
   document.getElementById("updateButton").addEventListener("click", () => {
+    // updatePeak1Inputs(); // Not strictly needed here as it's for mode changes mostly
     updateDisplayedFile();
+    saveAppState();
   });
 
   // Add event listeners for tab switching
@@ -175,7 +330,7 @@ document.getElementById("fileInput").addEventListener("change", function (e) {
 
   allFilesData = [];
   const fileSelector = document.getElementById("fileSelector");
-  fileSelector.innerHTML = "";
+  fileSelector.innerHTML = ""; // Clear existing options
 
   const loadPromises = Array.from(files).map((file) => {
     return new Promise((resolve) => {
@@ -206,9 +361,14 @@ document.getElementById("fileInput").addEventListener("change", function (e) {
       "All files loaded:",
       allFilesData.map((f) => f.name),
     );
-    displayedFileIndex = 0;
-    fileSelector.value = displayedFileIndex;
+    if (allFilesData.length > 0) {
+        displayedFileIndex = 0;
+        fileSelector.value = displayedFileIndex;
+    } else {
+        displayedFileIndex = 0; // or -1 if no files
+    }
     updateDisplayedFile();
+    saveAppState(); // Save state after loading new files
   });
 });
 
@@ -244,9 +404,6 @@ function updateDisplayedFile() {
   updateArchaeoPlot();
 }
 
-let archaeologicalFiles = [];
-let selectedArchaeoIndex = 0;
-
 document.getElementById("archaeoFileInput").addEventListener("change", (e) => {
   const files = e.target.files;
   if (!files || files.length === 0) return;
@@ -279,14 +436,20 @@ document.getElementById("archaeoFileInput").addEventListener("change", (e) => {
       selector.appendChild(opt);
     });
 
-    selectedArchaeoIndex = 0;
-    selector.value = selectedArchaeoIndex;
+    if (archaeologicalFiles.length > 0) {
+        selectedArchaeoIndex = 0;
+        selector.value = selectedArchaeoIndex;
+    } else {
+        selectedArchaeoIndex = 0; // or -1
+    }
+    
     // Fix: ensure calibration stats are up-to-date before updating archaeological tab
     if (allFilesData.length > 0) {
       updateDisplayedFile(); // This will update both tabs and calibration
     } else {
       updateArchaeoPlot();
     }
+    saveAppState(); // Save state after loading new archaeological files
   });
 });
 
@@ -1619,16 +1782,17 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
     if (selectAllCheckbox) {
         selectAllCheckbox.addEventListener('change', function() {
             const isChecked = this.checked;
+            const currentSampleNamesOnDisplay = allPeaks.map(file => file.name);
             if (isChecked) {
-                sampleNames.forEach(name => includedSamples.add(name));
+                currentSampleNamesOnDisplay.forEach(name => includedSamples.add(name));
             } else {
-                sampleNames.forEach(name => includedSamples.delete(name));
+                currentSampleNamesOnDisplay.forEach(name => includedSamples.delete(name));
             }
-            updateDisplayedFile(); // Trigger re-render
-            // Also update archaeological tab if it's visible
+            updateDisplayedFile(); 
             if (document.getElementById("archaeologicalSection").style.display !== "none") {
                 updateArchaeoPlot();
             }
+            saveAppState(); // Save state
         });
     }
 
@@ -1641,11 +1805,11 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
         } else {
           includedSamples.delete(sampleName);
         }
-        updateDisplayedFile(); // Trigger re-render
-        // Also update archaeological tab if it's visible
+        updateDisplayedFile();
         if (document.getElementById("archaeologicalSection").style.display !== "none") {
             updateArchaeoPlot();
         }
+        saveAppState(); // Save state
       });
     });
   }, 0);

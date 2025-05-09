@@ -20,20 +20,23 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 - **Archaeological Samples Tab**
   - Upload multiple spectra of samples with unknown firing temperature
   - Navigate through samples using dropdown or quick navigation buttons (<<, >>)
-  - Apply the same analysis pipeline (method, intervals, height %) as the Experimental Tab for consistency
+  - Apply the same analysis pipeline (method, intervals, height %) as the Experimental Tab for consistency (using `window.calibrationStats` generated from experimental data).
   - Click "Derive Temperatures" button to (re)calculate and display derived temperatures and update calibration plots.
   - Derive temperature ranges based on calibration curves from experimental data. The derived temperature table shows:
-    - "Best estimate" temperatures (where the archaeological sample's value crosses the mean calibration curve).
-    - "Possible range" temperatures (where the archaeological sample's value falls within the mean ± standard deviation of the calibration curve).
-    - For values outside the mean calibration curve but within the SD band, the "best estimate" shows the midpoint of the in-SD range.
-    - If a value is entirely out of the calibration curve (even with SD), it's reported as "Out of range (closest: X°C)", indicating the temperature at the nearest edge of the calibration curve.
+    - "Best estimate" temperatures: These are points where the archaeological sample's parameter value intersects the mean calibration curve. Each estimate is accompanied by a temperature uncertainty (ΔT), calculated from the local slope of the calibration curve and the parameter's standard deviation at that point. If a segment of the calibration curve is flat, the temperature may be reported as "Uncertain" or with a very high ΔT.
+    - "Possible range" temperatures: These are temperature intervals where the archaeological sample's parameter value falls within the mean ± standard deviation band of the calibration curve. These ranges are processed to merge overlapping sections and round to sensible values.
+    - For values that do not intersect the mean curve but fall within an SD band, the "best estimate" may reflect the midpoint of the temperature range where it's within the SD band.
+    - If a value is entirely out of the calibration curve (even considering the SD band), it's reported as "Out of range (closest: X°C)", indicating the temperature at the nearest edge of the calibration curve's SD band.
   - Show spectra and fitted peaks for each sample (if applicable based on selected method).
-  - Display derived temperatures in a summary table for each parameter (HD/HG, D Width, G Width, WD/WG), including best estimates and SD ranges.
+  - Display derived temperatures in a summary table for each parameter (HD/HG, D Width, G Width, WD/WG), including best estimates with their uncertainties (ΔT) and consolidated SD ranges.
   - Overlay archaeological points on calibration charts:
     - Points are plotted at their derived temperature(s) against their parameter value.
-    - Out-of-range archaeological points are visually distinguished (e.g., hollow circles with dashed borders).
-    - Tooltips for out-of-range points display "Out of range (closest: X°C)".
-    - Calibration chart Y-axis automatically adjusts with padding to ensure out-of-range points are visible.
+    - Visual distinction for archaeological points:
+      - Solid markers (e.g., rotated rectangles) if the value intersects the mean calibration line.
+      - Markers with a border but transparent fill if the value is within an SD band but does not cross the mean line.
+      - Hollow markers with dashed borders if the value is out of the calibration range (mean ± SD).
+    - Tooltips provide detailed information, including "Out of range (closest: X°C)" for points outside the calibration band.
+    - Calibration chart Y-axis automatically adjusts with padding to ensure all data points are visible, including calibration means, full standard deviation bands, and any out-of-range archaeological samples.
 
 ### 📈 Plotting & Interactivity
 - Full spectrum plot with:
@@ -44,12 +47,11 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 - Independent charts for each tab
 - Chart.js based visualizations with hover tooltips and interactive legends
 - Method-specific data visualization (Simple/Voigt) in statistical plots
-- Error bars showing standard deviations
+- Experimental tab statistical plots feature vertical error bars for parameter standard deviation and horizontal error bars for estimated temperature uncertainty (ΔT).
 - Peak labels with wavelength values
-- Width labels showing FWHM values
-- Calibration charts in the Archaeological tab dynamically update with overlaid archaeological sample points.
-  - Visual distinction for out-of-range points and informative tooltips.
-  - Y-axis scales adjust to include all data points, including standard deviations and out-of-range archaeological samples.
+- Width labels showing FWHM or user-defined % height width values on main spectrum plots.
+- Calibration charts in the Archaeological tab dynamically update with overlaid archaeological sample points, featuring distinct visual styles for points on the mean calibration line, within the SD band only, or out of range, along with informative tooltips.
+- Y-axis scales on calibration charts adjust dynamically with padding to ensure all data points are visible, including calibration means, standard deviation bands, and out-of-range archaeological samples.
 
 ### ⚙️ Custom Controls
 - User-selectable peak intervals and search width height (% of peak)
@@ -64,7 +66,8 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 ### 📊 Statistics and Data Analysis
 - Grouped results by firing temperature
 - Average, Standard Deviation, and Standard Error calculations
-- Overlay of means and error bars on scatter plots
+- Calculation of estimated temperature uncertainty (ΔT) for experimental data, derived from the local slope of the calibration curve and the standard deviation of the measured parameter.
+- Overlay of means and error bars (parameter SD and temperature ΔT) on scatter plots in the experimental tab.
 - Method comparison table with paired t-test and significance flags
 - Interactive data selection through checkboxes
 - Separate statistical plots for:
@@ -78,7 +81,7 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 ### 🔄 Synchronization Features
 - Synchronized method selection between tabs (Experimental tab controls Archaeological tab calculations).
 - Synchronized mode selection (Broad/Conventional) (Experimental tab controls Archaeological tab calculations).
-- Peak interval and width percentage settings from the Experimental tab are used for all calculations in the Archaeological tab to ensure consistency.
+- Peak interval and width percentage settings from the Experimental tab are used for all calculations in the Archaeological tab (including deriving `window.calibrationStats` and analyzing archaeological samples) to ensure consistency.
 - Automatic parameter updates when changing methods.
 - Default value restoration for different modes
 - Consistent width percentage settings across tabs
@@ -86,12 +89,13 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 ### 🧮 Data Processing
 - Savitzky-Golay smoothing for Voigt method
 - Peak detection with multiple algorithms
-- Width calculation at user-defined heights
-- Automatic valley detection between peaks
+- Width calculation at user-defined heights (for Simple method and as a target for Voigt fitting).
+- Automatic valley detection between peaks for defining Voigt fitting intervals.
 - Temperature extraction from filenames
-- Pseudo-Voigt function fitting for peak analysis
+- Pseudo-Voigt function fitting for peak analysis, with width calculation at user-defined % height (from experimental tab settings) to determine the reported width.
+- Sophisticated interpolation and range-finding logic (`findTemperaturesForValue`, `findTemperatureRangesWithinSD`) to derive temperatures and their uncertainties/ranges from calibration curves, including handling of flat or near-flat segments.
 - Matrix operations for Savitzky-Golay coefficients
-- Linear interpolation for precise width measurements
+- Linear interpolation for precise width measurements in some contexts.
 
 ## Technologies Used
 

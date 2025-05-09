@@ -37,6 +37,7 @@
         Experimental
       </button>
       <button id="tabArchaeological" class="tabButton">Archaeological</button>
+      <a href="/methods.html" class="tabButton" style="text-decoration: none; padding: 10px 15px;">Methods</a>
     </div>
 
     <!-- === EXPERIMENTAL DATA TAB (your original interface) === -->
@@ -229,6 +230,21 @@
         // Highlight this tab
         tabArchaeological.classList.add("active");
         tabExperimental.classList.remove("active");
+        // Update archaeological tab when switching to it, if needed
+        if (typeof updateArchaeoPlot === 'function') updateArchaeoPlot();
+      });
+
+      // Handle tab selection based on URL hash on page load
+      document.addEventListener("DOMContentLoaded", () => {
+        const hash = window.location.hash;
+        if (hash === "#archaeological") {
+          // Simulate a click on the archaeological tab button
+          // to ensure all related logic (like plot updates) also runs.
+          if(tabArchaeological) tabArchaeological.click();
+        } else {
+          // Default to experimental tab (or ensure it's active if hash is #experimental or empty)
+          if(tabExperimental) tabExperimental.click(); // Ensure experimental is active and plots updated
+        }
       });
 
       // Initialize controls synchronization - will be done in script.js
