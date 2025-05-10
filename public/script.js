@@ -133,11 +133,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Add event listeners for method and mode selectors in both tabs
   document.getElementById("analysisMethod").addEventListener("change", () => {
-    if (document.getElementById("analysisMethod").value === "voigt") {
+    const analysisMethodValue = document.getElementById("analysisMethod").value; // Store value
+    if (analysisMethodValue === "voigt" || analysisMethodValue === "voigt5d") { // Use stored value
       document.getElementById("peak1Mode").value = "broad";
+      // Potentially disable/hide peak1Start, peak1End, peak2Start, peak2End for "voigt5d" later
+      // as these will be determined by the 5-peak fit
+    }
+    // For simple method, or any other, we don't force "broad" mode here.
+    // updatePeak1Inputs will still be called and will set defaults if needed based on mode.
+    
       updatePeak1Inputs(); // This updates D peak inputs and calls updateDisplayedFile
-    } else {
-      updateDisplayedFile(); // If not Voigt, still update display based on simple method
+    
+    // Explicitly call updateDisplayedFile if not voigt or voigt5d to ensure plot refreshes
+    // because updatePeak1Inputs might not call it if mode doesn't change.
+    // However, updatePeak1Inputs *does* call updateDisplayedFile if allFilesData.length > 0.
+    // The main thing is that if analysisMethod changes TO "simple", we need a refresh.
+    if (analysisMethodValue !== "voigt" && analysisMethodValue !== "voigt5d") {
+        if (allFilesData.length > 0) {
+            updateDisplayedFile();
+        }
     }
     saveAppState();
   });
@@ -566,13 +580,14 @@ function updateArchaeoPlot() {
     const resultsByMethod = {
       simple: [],
       voigt: [],
+      voigt5d: [], // Add new method here
     };
 
     allFilesData.forEach((fileData) => {
       // Skip if file is not included
       if (!includedSamples.has(fileData.name)) return;
 
-      ["simple", "voigt"].forEach((method) => {
+      ["simple", "voigt", "voigt5d"].forEach((method) => {
         const divisionPoint = getDivisionPoint(
           fileData.spectrumData.wavelengths,
           fileData.spectrumData.intensities,
@@ -581,7 +596,7 @@ function updateArchaeoPlot() {
         );
 
         let plotIntervals;
-        if (method === "voigt") {
+        if (method === "voigt" || method === "voigt5d") {
           plotIntervals = [
             { start: 1150, end: divisionPoint },
             { start: divisionPoint, end: 1700 }
@@ -817,6 +832,9 @@ function updatePeak1Inputs() {
   const peak2StartInput = document.getElementById("peak2Start");
   const peak2EndInput = document.getElementById("peak2End");
 
+  // Get current analysis method
+  const analysisMethod = document.getElementById("analysisMethod").value;
+
   if (mode === "broad") {
     peak1StartInput.value = 1300;
     peak1EndInput.value = 1450;
@@ -829,15 +847,31 @@ function updatePeak1Inputs() {
     peak2EndInput.value = 1610;
   }
 
-  // 👇 Apply default 50% height when using Voigt method
-  const analysisMethod = document.getElementById("analysisMethod").value;
-  if (analysisMethod === "voigt") {
+  // Apply default 50% height when using Voigt or Voigt (5D) method
+  if (analysisMethod === "voigt" || analysisMethod === "voigt5d") {
     document.getElementById("dBandWidthHeight").value = 50;
     document.getElementById("gBandWidthHeight").value = 50;
   }
 
+  // For "voigt5d", we ensure "broad" mode is selected.
+  // The event listener for "analysisMethod" already sets peak1Mode to "broad"
+  // and then calls this function, so the "broad" values for start/end will be applied.
+  if (analysisMethod === "voigt5d") {
+    // We could also consider disabling the D and G band start/end inputs here for "voigt5d"
+    // as they are less directly relevant. For example:
+    // peak1StartInput.disabled = true; peak1EndInput.disabled = true;
+    // peak2StartInput.disabled = true; peak2EndInput.disabled = true;
+    // peak1ModeSelect.disabled = true; // also the mode selector
+    console.log("Voigt (5D) selected. D/G intervals will be broad and largely fixed by the multi-peak fit.");
+      } else {
+    // Re-enable inputs if switching away from voigt5d, if we chose to disable them.
+    // peak1StartInput.disabled = false; peak1EndInput.disabled = false;
+    // peak2StartInput.disabled = false; peak2EndInput.disabled = false;
+    // peak1ModeSelect.disabled = false;
+  }
+
   if (allFilesData.length > 0) {
-    updateDisplayedFile();
+            updateDisplayedFile(); 
   }
 }
 
@@ -868,10 +902,11 @@ function updatePlot(spectrumData) {
   const resultsByMethod = {
     simple: [],
     voigt: [],
+    voigt5d: [], // Add new method here
   };
 
   allFilesData.forEach((fileData) => {
-    ["simple", "voigt"].forEach((method) => {
+    ["simple", "voigt", "voigt5d"].forEach((method) => {
       // Calculate division point for this file
       const divisionPoint = getDivisionPoint(
         fileData.spectrumData.wavelengths,
@@ -882,7 +917,7 @@ function updatePlot(spectrumData) {
 
       // Use broad intervals for Voigt, user intervals for Simple
       let plotIntervals;
-      if (method === "voigt") {
+      if (method === "voigt" || method === "voigt5d") {
         plotIntervals = [
           { start: 1150, end: divisionPoint },
           { start: divisionPoint, end: 1700 }
@@ -932,7 +967,7 @@ function updatePlot(spectrumData) {
 
   // Use broad intervals only for Voigt, otherwise use user intervals
   let plotIntervals;
-  if (currentMethod === "voigt") {
+  if (currentMethod === "voigt" || currentMethod === "voigt5d") {
     plotIntervals = [
       { start: 1150, end: divisionPoint },
       { start: divisionPoint, end: 1700 }
@@ -1023,23 +1058,57 @@ function plotSpectrum(
     },
   ];
 
-  // Only draw the solid fit lines for the fitted curves
-  if (showFitting && method === "voigt" && fittedCurves.length > 0) {
+  // Updated condition to draw fitted curves for Voigt OR Voigt5D
+  if (showFitting && (method === "voigt" || method === "voigt5d") && fittedCurves && fittedCurves.length > 0) {
+    const colors = ["red", "purple", "orange", "cyan", "magenta", "lime", "brown", "black"]; // Base colors for cycling
+    
     fittedCurves.forEach((curve, index) => {
+      let borderColor = colors[index % colors.length]; // Default color cycling
+      let curveLabel = curve.label || `Fit ${index + 1}`; // Use label from curve object if available
+      let curveOrder = 2; // Default order (draw below main D/G)
+      let curveWidth = 1.5; // Default width
+
+      if (method === "voigt") {
+        // Specific styling for the standard 2-peak Voigt fit
+        borderColor = index === 0 ? "red" : "green"; // D is red, G is green
+        curveLabel = curve.label || `Fitted ${index === 0 ? 'D' : 'G'}`; // Use existing label or default
+        curveWidth = 2;
+        curveOrder = 1; // Draw standard Voigt fits above sub-peaks but below composite if ever mixed
+      } else if (method === "voigt5d") {
+        // Specific styling for Voigt (5D)
+        if (curve.label && curve.label.toLowerCase().includes("d-complex (sum)")) {
+          borderColor = "firebrick"; // Prominent color for D-complex sum
+          curveOrder = 0;    // Draw on top
+          curveWidth = 2.5;
+        } else if (curve.label && curve.label.toLowerCase().includes("g-peak")) {
+          borderColor = "darkgreen"; // Prominent color for G-peak
+          curveOrder = 0;     // Draw on top
+          curveWidth = 2.0;
+        } else {
+          // Individual D sub-peaks - cycle through distinct colors
+          // Use a different set or offset of colors to distinguish from simple voigt if needed
+          const subPeakColors = ["purple", "orange", "teal", "magenta", "olive"];
+          borderColor = subPeakColors[index % subPeakColors.length]; 
+          curveWidth = 1;
+          curveOrder = 1; // Draw below sum/G but above raw data potentially
+        }
+      }
+      
       datasets.push({
-        label: `Fitted Peak ${index + 1}`,
-        data: curve.x.map((x, i) => ({ x, y: curve.y[i] })),
-        borderColor: index === 0 ? "red" : "green",
-        borderWidth: 2,
+        label: curveLabel,
+        data: curve.x.map((xVal, i) => ({ x: xVal, y: curve.y[i] })),
+        borderColor: borderColor,
+        borderWidth: curveWidth,
         pointRadius: 0,
         showLine: true,
-        tension: 0,
-        order: 1,
+        tension: 0, // Use 0 for unsmoothed lines from fitting
+        order: curveOrder, // Control drawing order
       });
     });
   }
 
-  if (showSmoothing && method === "voigt") {
+  // Updated condition for smoothing display
+  if (showSmoothing && (method === "voigt" || method === "voigt5d")) {
     const smoothed = savitzkyGolaySmooth(spectrumData.intensities, 11, 2);
     datasets.push({
       label: "Smoothed (SG)",
@@ -1047,13 +1116,13 @@ function plotSpectrum(
         x,
         y: smoothed[i],
       })),
-      borderColor: "rgba(0,0,0,1)",
-      borderWidth: 2,
+      borderColor: "rgba(0,0,0,0.6)", // Semi-transparent black for smoothed
+      borderWidth: 1.5,
       pointRadius: 0,
       showLine: true,
-      tension: 0,
+      tension: 0, // Smoothed data itself, so no line tension
       fill: false,
-      order: 1,
+      order: 3, // Draw smoothed line behind fitted peaks but above raw data
     });
   }
 
@@ -1166,174 +1235,153 @@ function findTopPeaks(
   method,
   canvasId = "spectrumChart"
 ) {
-  let processedIntensities = [...intensities];
-  let fittedCurves = [];
+  let topPeaks = [];
+  let fittedCurves = []; 
 
-  if (method === "voigt") {
-    processedIntensities = savitzkyGolaySmooth(intensities, 11, 2);
-  }
+  if (method === "voigt5d") {
+    console.log("findTopPeaks: Voigt (5D) method selected.");
 
-  // First find peaks using user intervals
-  const approximatePeaks = intervals.map(({ start, end }, intervalIndex) => {
-    const filteredIndices = wavelengths
-      .map((wavelength, index) => ({ wavelength, index }))
-      .filter((point) => point.wavelength >= start && point.wavelength <= end)
-      .map((point) => point.index);
+    const dComplexDataRegion = { start: 1100, end: 1680 }; 
+    const gPeakDataRegion    = { start: 1500, end: 1750 }; 
 
-    if (filteredIndices.length === 0) return null;
+    const dIndices = wavelengths.map((w, i) => i).filter(i => wavelengths[i] >= dComplexDataRegion.start && wavelengths[i] <= dComplexDataRegion.end);
+    const xDataD = dIndices.map(i => wavelengths[i]);
+    const yDataD = dIndices.map(i => intensities[i]);
 
-    const filteredPoints = filteredIndices.map((idx) => ({
-      wavelength: wavelengths[idx],
-      intensity:
-        method === "voigt" ? processedIntensities[idx] : intensities[idx],
-    }));
+    const gIndices = wavelengths.map((w, i) => i).filter(i => wavelengths[i] >= gPeakDataRegion.start && wavelengths[i] <= gPeakDataRegion.end);
+    const xDataG = gIndices.map(i => wavelengths[i]);
+    const yDataG = gIndices.map(i => intensities[i]);
 
-    const peak = filteredPoints.reduce((max, point) =>
-      point.intensity > max.intensity ? point : max,
-    );
-    return peak.wavelength;
-  });
-
-  // Calculate division point for broad intervals
-  let divisionPoint = 1500;
-  if (
-    approximatePeaks.length === 2 &&
-    approximatePeaks[0] &&
-    approximatePeaks[1]
-  ) {
-    const dPeakCenter = approximatePeaks[0];
-    const gPeakCenter = approximatePeaks[1];
-
-    if (dPeakCenter < gPeakCenter) {
-      const valleyIndices = wavelengths
-        .map((w, i) => ({ w, i }))
-        .filter(({ w }) => w >= dPeakCenter && w <= gPeakCenter)
-        .map(({ i }) => i);
-
-      if (valleyIndices.length > 0) {
-        let valleyIntensities;
-        if (method === "voigt") {
-          const smoothed = savitzkyGolaySmooth(intensities, 11, 2);
-          valleyIntensities = valleyIndices.map(i => smoothed[i]);
-        } else {
-          valleyIntensities = valleyIndices.map(i => intensities[i]);
-        }
-        const minIndex =
-          valleyIndices[
-            valleyIntensities.indexOf(Math.min(...valleyIntensities))
-          ];
-        divisionPoint = wavelengths[minIndex];
-
-        const minDistance = 50;
-        divisionPoint = Math.max(
-          dPeakCenter + minDistance,
-          Math.min(divisionPoint, gPeakCenter - minDistance),
-        );
-      }
+    if (typeof fitDComplexAndGPeak_Voigt5D !== 'function') {
+        console.error("CRITICAL: fitDComplexAndGPeak_Voigt5D function is not defined! Cannot perform Voigt (5D) fitting.");
+        return { topPeaks: [], fittedCurves: [] };
     }
-  }
 
-  // Define broad intervals for fitting only
-  const broadIntervals = [
-    { start: 1150, end: divisionPoint },
-    { start: divisionPoint, end: 1700 }
-  ];
+    const voigt5dResults = fitDComplexAndGPeak_Voigt5D(xDataD, yDataD, xDataG, yDataG, canvasId + "_voigt5d_context");
 
-  // Find and fit peaks
-  const peaks = intervals.map((interval, intervalIndex) => {
-    // 1. Find peak center in user interval
-    const filteredIndices = wavelengths
-      .map((wavelength, index) => ({ wavelength, index }))
-      .filter(
-        (point) =>
-          point.wavelength >= interval.start &&
-          point.wavelength <= interval.end
-      )
-      .map((point) => point.index);
+    fittedCurves = voigt5dResults.fittedCurves || []; 
 
-    if (filteredIndices.length === 0) return null;
-
-    // Find peak center
-    const xUser = filteredIndices.map((idx) => wavelengths[idx]);
-    const yUser = filteredIndices.map((idx) =>
-      method === "voigt" ? processedIntensities[idx] : intensities[idx]
-    );
-    let peakCenter = xUser[yUser.indexOf(Math.max(...yUser))];
-
-    if (method === "voigt") {
-      // 2. Fit using broad interval data
-      const broad = broadIntervals[intervalIndex];
-      const broadIndices = wavelengths
-        .map((w, i) => ({ w, i }))
-        .filter(({ w }) => w >= broad.start && w <= broad.end)
-        .map(({ i }) => i);
-      const xBroad = broadIndices.map(i => wavelengths[i]);
-      const yBroad = broadIndices.map(i => processedIntensities[i]);
-      const fitResult = fitPseudoVoigt(xBroad, yBroad, intervalIndex, canvasId);
-      const { A, mu, sigma, gamma, eta, fwhm, leftX, rightX } = fitResult;
-
-      // Generate fitted curve over the full range 1000-1900 for both D and G
-      const fullX = [];
-      for (let x = 1000; x <= 1900; x += 1) {
-        fullX.push(x);
-      }
-      const fullY = fullX.map((x) =>
-        pseudoVoigt(x, A, mu, sigma, gamma, eta)
-      );
-      fittedCurves.push({ x: fullX, y: fullY });
-
-      return { wavelength: mu, intensity: A, fwhm, leftX, rightX };
+    const peaksForTable = [];
+    if (voigt5dResults.d1Peak) {
+        peaksForTable.push(voigt5dResults.d1Peak);
     } else {
-      // Simple method: fit and width in user interval
-      const filteredPoints = filteredIndices.map((idx) => ({
-        wavelength: wavelengths[idx],
-        intensity: intensities[idx],
-      }));
-
-      const peak = filteredPoints.reduce((max, point) =>
-        point.intensity > max.intensity ? point : max,
-      );
-      return peak;
+        console.warn("Voigt (5D) fitDComplexAndGPeak_Voigt5D did not return d1Peak.");
+        peaksForTable.push({wavelength: null, intensity: null, height: null, width: null});
     }
-  });
+    if (voigt5dResults.gPeak) {
+        peaksForTable.push(voigt5dResults.gPeak);
+    } else {
+        console.warn("Voigt (5D) fitDComplexAndGPeak_Voigt5D did not return gPeak.");
+        peaksForTable.push({wavelength: null, intensity: null, height: null, width: null});
+    }
+    topPeaks = peaksForTable;
 
-  const topPeaks = peaks
-    .filter((peak) => peak !== null)
-    .map((peak, index) => {
-      if (method === "voigt") {
-        const percentage = widthPercentages[index];
-        const targetHeight = peak.intensity * percentage;
+    console.log(`Voigt (5D) processing complete. Fitted curves: ${fittedCurves.length}, Top peaks for table: ${topPeaks.length}`);
+
+  } else if (method === "voigt") {
+    let processedIntensities = savitzkyGolaySmooth(intensities, 11, 2);
+
+    const divisionPoint = getDivisionPoint(
+        wavelengths,
+        processedIntensities, 
+        intervals, 
+        method 
+    );
+
+    const broadFittingIntervals = [
+        { start: 1150, end: divisionPoint },
+        { start: divisionPoint, end: 1700 }
+    ];
+
+    const peaksFromFit = broadFittingIntervals.map((fittingRegion, intervalIndex) => {
+        const broadIndices = wavelengths
+            .map((w, i) => ({ w, i }))
+            .filter(({ w }) => w >= fittingRegion.start && w <= fittingRegion.end)
+            .map(({ i }) => i);
+
+        if (broadIndices.length === 0) {
+            console.warn(`Voigt: No data points in broad fitting interval for peak ${intervalIndex === 0 ? 'D' : 'G'}: [${fittingRegion.start}, ${fittingRegion.end}]`);
+            return null;
+        }
+        const xBroad = broadIndices.map(i => wavelengths[i]);
+        const yBroad = broadIndices.map(i => processedIntensities[i]); 
+
+        const fitResult = fitPseudoVoigt(xBroad, yBroad, intervalIndex, canvasId);
+
+        const fullX = []; for (let x = 1000; x <= 1900; x += 1) fullX.push(x);
+        const fittedCurveY = fullX.map((xVal) =>
+            pseudoVoigt(xVal, fitResult.A, fitResult.mu, fitResult.sigma, fitResult.gamma, fitResult.eta)
+        );
+        fittedCurves.push({
+            x: fullX,
+            y: fittedCurveY,
+            label: `Fitted ${intervalIndex === 0 ? 'D' : 'G'} (Voigt)`
+        });
 
         return {
-          wavelength: peak.wavelength,
-          intensity: peak.intensity,
-          height: peak.intensity,
-          width: peak.rightX - peak.leftX,
-          widthLeftX: peak.leftX,
-          widthRightX: peak.rightX,
-          widthHeight: targetHeight,
+            wavelength: fitResult.mu,
+            intensity: fitResult.A, 
+            height: fitResult.A,     
+            width: fitResult.rightX - fitResult.leftX, 
+            widthLeftX: fitResult.leftX,
+            widthRightX: fitResult.rightX,
+            widthHeight: fitResult.A * widthPercentages[intervalIndex], 
         };
-      } else {
+    });
+
+    topPeaks = peaksFromFit.filter(peak => peak !== null);
+    if (topPeaks.length < 2 && peaksFromFit.some(p => p === null)) {
+        console.warn("Voigt: Could not fit one or both D/G peaks.");
+    }
+
+  } else { 
+    const simplePeaks = intervals.map((interval, intervalIndex) => {
+        const filteredIndices = wavelengths
+            .map((wavelength, index) => ({ wavelength, index }))
+            .filter(point => point.wavelength >= interval.start && point.wavelength <= interval.end)
+            .map(point => point.index);
+
+        if (filteredIndices.length === 0) {
+            console.warn(`Simple: No data points in user interval for peak ${intervalIndex === 0 ? 'D' : 'G'}: [${interval.start}, ${interval.end}]`);
+            return null;
+        }
+
+        const peakPoint = filteredIndices.reduce((maxIdx, currentIdx) =>
+            intensities[currentIdx] > intensities[maxIdx] ? currentIdx : maxIdx,
+            filteredIndices[0]
+        );
+
+        return {
+            wavelength: wavelengths[peakPoint],
+            intensity: intensities[peakPoint], 
+        };
+    });
+
+    topPeaks = simplePeaks.filter(peak => peak !== null).map((peak, index) => {
+        if (!peak) return null; 
         const percentage = widthPercentages[index];
         const widthData = calculatePeakWidth(
-          wavelengths,
-          intensities,
-          peak.wavelength,
-          peak.intensity,
-          percentage,
-          index,
+            wavelengths,
+            intensities,
+            peak.wavelength,
+            peak.intensity,
+            percentage,
+            index
         );
         return {
-          wavelength: peak.wavelength,
-          intensity: peak.intensity,
-          height: peak.intensity,
-          width: widthData ? widthData.width : null,
-          widthLeftX: widthData ? widthData.leftX : null,
-          widthRightX: widthData ? widthData.rightX : null,
-          widthHeight: widthData ? widthData.targetHeight : null,
+            wavelength: peak.wavelength,
+            intensity: peak.intensity,
+            height: peak.intensity, 
+            width: widthData ? widthData.width : null,
+            widthLeftX: widthData ? widthData.leftX : null,
+            widthRightX: widthData ? widthData.rightX : null,
+            widthHeight: widthData ? widthData.targetHeight : null,
         };
-      }
-    });
+    }).filter(p => p !== null);
+     if (topPeaks.length < 2 && simplePeaks.some(p => p === null)) {
+        console.warn("Simple: Could not find one or both D/G peaks in user intervals.");
+    }
+  }
 
   return { topPeaks, fittedCurves };
 }
@@ -3109,4 +3157,91 @@ function findTemperatureRangesWithinSD(temps, means, stds, value) {
     
     // Filter out any ranges that are effectively points or have negligible length
     return mergedRanges.filter(range => range.end > range.start + 1e-9);
+}
+
+// STUB function for Voigt (5D) fitting.
+// REPLACE THE BODY WITH ACTUAL FITTING LOGIC LATER.
+function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, yDataG_input, canvasIdBase = "spectrumChart_voigt5d_stub") {
+    console.log("Executing STUB fitDComplexAndGPeak_Voigt5D with D-data length:", xDataD_input.length, "G-data length:", xDataG_input.length);
+
+    // Hardcoded parameters for demonstration
+    const d1Params = { A: 18, mu: 1350, sigma: 25, gamma: 20, eta: 0.5, label: "D1 (Stub)" };
+    const d2Params = { A: 10, mu: 1615, sigma: 15, gamma: 10, eta: 0.5, label: "D2 (Stub)" }; // Might overlap with G
+    const d3Params = { A: 8,  mu: 1510, sigma: 20, gamma: 15, eta: 0.5, label: "D3 (Stub)" };
+    const d4Params = { A: 6,  mu: 1200, sigma: 30, gamma: 25, eta: 0.5, label: "D4 (Stub)" };
+    const d5Params = { A: 5,  mu: 1280, sigma: 22, gamma: 18, eta: 0.5, label: "D5 (Stub)" };
+    const gParams  = { A: 15, mu: 1590, sigma: 20, gamma: 15, eta: 0.5, label: "G (Stub)"  };
+
+    const allDPeakParams = [d1Params, d2Params, d3Params, d4Params, d5Params];
+    const fittedCurvesOut = [];
+    const fullXRange = [];
+    for (let x = 1000; x <= 1900; x += 1) fullXRange.push(x); // Consistent X range for all curves
+
+    // Individual D sub-peak curves
+    const dSubPeakCurvesY = allDPeakParams.map(p =>
+        fullXRange.map(xVal => pseudoVoigt(xVal, p.A, p.mu, p.sigma, p.gamma, p.eta))
+    );
+
+    allDPeakParams.forEach((p, i) => {
+        fittedCurvesOut.push({
+            x: [...fullXRange], // Use a copy
+            y: dSubPeakCurvesY[i],
+            label: p.label || `D${i+1} (Fit)`,
+            type: `d-subpeak-${i+1}`
+        });
+    });
+
+    // Composite D-Curve (Sum of D1-D5)
+    const compositeDCurveY = fullXRange.map((x_val, i_x) =>
+        dSubPeakCurvesY.reduce((sum, individual_d_curve_y_array) => sum + individual_d_curve_y_array[i_x], 0)
+    );
+    fittedCurvesOut.push({
+        x: [...fullXRange], // Use a copy
+        y: compositeDCurveY,
+        label: "D-Complex (Sum)",
+        type: "composite-d"
+    });
+
+    // G-Peak Curve
+    const gCurveY = fullXRange.map(xVal => pseudoVoigt(xVal, gParams.A, gParams.mu, gParams.sigma, gParams.gamma, gParams.eta));
+    fittedCurvesOut.push({
+        x: [...fullXRange], // Use a copy
+        y: gCurveY,
+        label: gParams.label || "G-Peak (Fit)",
+        type: "g-peak"
+    });
+
+    // Prepare D1 and G peaks for the summary table (topPeaks)
+    const dBandWidthHeightPercentage = parseFloat(document.getElementById("dBandWidthHeight")?.value || 50) / 100;
+    const gBandWidthHeightPercentage = parseFloat(document.getElementById("gBandWidthHeight")?.value || 50) / 100;
+
+    const d1_FWHM_approx = approximateVoigtFWHM(d1Params.sigma, d1Params.gamma, d1Params.eta);
+    const g_FWHM_approx  = approximateVoigtFWHM(gParams.sigma, gParams.gamma, gParams.eta);
+
+    const d1PeakForTable = {
+        wavelength: d1Params.mu,
+        intensity: d1Params.A,
+        height: d1Params.A,
+        width: d1_FWHM_approx,
+        widthLeftX: d1Params.mu - d1_FWHM_approx / 2,
+        widthRightX: d1Params.mu + d1_FWHM_approx / 2,
+        widthHeight: d1Params.A * dBandWidthHeightPercentage,
+        isD1: true
+    };
+
+    const gPeakForTable = {
+        wavelength: gParams.mu,
+        intensity: gParams.A,
+        height: gParams.A,
+        width: g_FWHM_approx,
+        widthLeftX: gParams.mu - g_FWHM_approx / 2,
+        widthRightX: gParams.mu + g_FWHM_approx / 2,
+        widthHeight: gParams.A * gBandWidthHeightPercentage
+    };
+
+    return {
+        d1Peak: d1PeakForTable,
+        gPeak: gPeakForTable,
+        fittedCurves: fittedCurvesOut
+    };
 }
