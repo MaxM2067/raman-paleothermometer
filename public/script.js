@@ -913,6 +913,8 @@ function updatePlot(spectrumData) {
         name: fileData.name,
         temperature,
         hdHg,
+        dHeight: d.height || null, // Added D peak height
+        gHeight: g.height || null, // Added G peak height
         dWidth: d.width || null,
         gWidth: g.width || null,
         wdWg,
@@ -1637,6 +1639,8 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
           <th style="padding: 5px; text-align: center;">Temperature</th>
           <th style="padding: 5px; text-align: center;">D Peak (cm⁻¹)</th>
           <th style="padding: 5px; text-align: center;">G Peak (cm⁻¹)</th>
+          <th style="padding: 5px; text-align: center;">D Peak Height</th>
+          <th style="padding: 5px; text-align: center;">G Peak Height</th>
           <th style="padding: 5px; text-align: center;">HD/HG</th>
           <th>D width ${dBandWidthHeight + "%H"}</th>
           <th>G width ${gBandWidthHeight + "%H"}</th>
@@ -1656,6 +1660,8 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
   allPeaks.forEach((file) => {
     const temp = file.temperature.replace(" °C", "");
     const hdHg = file.hdHg != null ? file.hdHg.toFixed(2) : "N/A";
+    const dHeight = file.dHeight != null ? file.dHeight.toFixed(2) : "N/A"; // Added D peak height
+    const gHeight = file.gHeight != null ? file.gHeight.toFixed(2) : "N/A"; // Added G peak height
     const dWidth = file.dWidth != null ? file.dWidth.toFixed(2) : "N/A";
     const gWidth = file.gWidth != null ? file.gWidth.toFixed(2) : "N/A";
     const wdWg = file.wdWg != null ? file.wdWg.toFixed(2) : "N/A";
@@ -1721,6 +1727,8 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
         <td style="padding: 5px; text-align: center;">${temp}</td>
         <td style="padding: 5px; text-align: center;">${dPeakWavelength}</td>
         <td style="padding: 5px; text-align: center;">${gPeakWavelength}</td>
+        <td style="padding: 5px; text-align: center;">${dHeight}</td>
+        <td style="padding: 5px; text-align: center;">${gHeight}</td>
         <td style="padding: 5px; text-align: center;">${hdHg}</td>
         <td style="padding: 5px; text-align: center;">${dWidth}</td>
         <td style="padding: 5px; text-align: center;">${gWidth}</td>
@@ -1733,6 +1741,8 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
       if (temp !== "N/A") {
         if (file.hdHg != null)
           individualData.hdHg.push({ name: file.name, temperature: temp, value: file.hdHg });
+        // dHeight and gHeight are not typically plotted against temperature in the same way as ratios/widths
+        // So, not adding them to individualData for plotting here, but they are in the table.
         if (file.dWidth != null)
           individualData.dWidth.push({ name: file.name, temperature: temp, value: file.dWidth });
         if (file.gWidth != null)
