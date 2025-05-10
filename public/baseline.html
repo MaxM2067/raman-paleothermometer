@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Baseline Correction</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.2.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        background-color: #f4f4f4;
+        color: #333;
+      }
+      .container {
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        color: #333;
+        text-align: center;
+      }
+      input[type="file"], button {
+        margin-top: 10px;
+        margin-right: 10px;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #ddd;
+      }
+      button {
+        cursor: pointer;
+        background-color: #007bff;
+        color: white;
+        border-color: #007bff;
+      }
+      button:hover {
+        background-color: #0056b3;
+      }
+      #baselineSpectrumChart {
+        margin-top: 20px;
+        max-width: 100%; /* Ensure chart is responsive */
+        height: auto;   /* Maintain aspect ratio */
+      }
+      .controls {
+        margin-bottom: 20px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="tabBar">
+      <a href="/index.html#experimental" class="tabButton" style="text-decoration: none; padding: 10px 15px;">Experimental</a>
+      <a href="/index.html#archaeological" class="tabButton" style="text-decoration: none; padding: 10px 15px;">Archaeological</a>
+      <a href="/baseline.html" class="tabButton active" style="text-decoration: none; padding: 10px 15px;">Baseline Correction</a>
+      <a href="/methods.html" class="tabButton" style="text-decoration: none; padding: 10px 15px;">Methods</a>
+    </div>
+
+    <div class="container">
+      <h1>Baseline Correction</h1>
+
+      <div class="controls">
+        <input type="file" id="baselineFileInput" accept=".txt" />
+        <button id="subtractBaselineButton">Subtract Baseline</button>
+        <button id="downloadCorrectedButton">Download Corrected Data</button>
+      </div>
+
+      <div style="width: 90%; height: 500px; margin: auto;"> 
+        <canvas id="baselineSpectrumChart"></canvas>
+      </div>
+    </div>
+
+    <script src="/baseline_script.js"></script> <!-- We will create this file next -->
+  </body>
+</html> 

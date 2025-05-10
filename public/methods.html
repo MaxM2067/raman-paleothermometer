@@ -40,6 +40,7 @@
     <div class="tabBar">
       <a href="index.html#experimental" id="tabExperimental" class="tabButton" style="text-decoration: none; padding: 10px 15px;">Experimental</a>
       <a href="index.html#archaeological" id="tabArchaeological" class="tabButton" style="text-decoration: none; padding: 10px 15px;">Archaeological</a>
+      <a href="baseline.html" class="tabButton" style="text-decoration: none; padding: 10px 15px;">Baseline Correction</a>
       <a href="methods.html" id="tabMethods" class="tabButton active" style="text-decoration: none; padding: 10px 15px;">Methods</a>
     </div>
     <div class="container">
@@ -285,6 +286,13 @@
             </li>
             <li><strong>Mean, Standard Deviation:</strong> Standard statistical measures used for describing parameter distributions at known temperatures and for error propagation.</li>
         </ul>
+
+        <h2>IV. Baseline Correction</h2>
+        <p>The baseline correction <a href="/baseline.html">page</a> implements a linear subtraction method using two anchor points at 850 cm<sup>-1</sup> and 2150 cm<sup>-1</sup>. The baseline is calculated as a straight line between these points using the equation:</p>
+        <span class="math-formula">
+            y = mx + b
+        </span>
+        <p>where <code>m</code> is the slope (intensity<sub>2150</sub> - intensity<sub>850</sub>) / (2150 - 850) and <code>b</code> is the y-intercept (intensity<sub>850</sub> - m * 850). The baseline is then subtracted from the original spectrum, and the result is filtered to include only points between 850 cm<sup>-1</sup> and 2150 cm<sup>-1</sup>.</p>
 
         <a href="index.html#experimental">Back to App</a>
     </div>
