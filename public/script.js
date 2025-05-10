@@ -675,11 +675,11 @@ function displayDerivedTemperatures(allPeaks, method, dBandWidthHeight, gBandWid
   // Populate table rows
   allPeaks.forEach((file) => {
     const hdHg = file.hdHg != null ? file.hdHg.toFixed(2) : "N/A";
-    const dWidth = file.dWidth != null ? file.dWidth.toFixed(2) : "N/A";
-    const gWidth = file.gWidth != null ? file.gWidth.toFixed(2) : "N/A";
+    const dWidth = file.dWidth != null ? parseFloat(file.dWidth).toFixed(0) : "N/A";
+    const gWidth = file.gWidth != null ? parseFloat(file.gWidth).toFixed(0) : "N/A";
     const wdWg = file.wdWg != null ? file.wdWg.toFixed(2) : "N/A";
-    const dPeak = file.dPeak != null ? file.dPeak.toFixed(1) : "N/A";
-    const gPeak = file.gPeak != null ? file.gPeak.toFixed(1) : "N/A";
+    const dPeak = file.dPeak != null ? parseFloat(file.dPeak).toFixed(0) : "N/A";
+    const gPeak = file.gPeak != null ? parseFloat(file.gPeak).toFixed(0) : "N/A";
 
     // For each parameter, derive all possible temperatures and ranges
     const derivedTemps = paramList.map(param => {
@@ -1102,7 +1102,7 @@ function plotSpectrum(
           weight: "bold"
         },
         content: [
-          `${index === 0 ? "D" : "G"} width: ${(peak.width).toFixed(1)}`
+          `${index === 0 ? "D" : "G"} width: ${(parseFloat(peak.width).toFixed(0))}` // Changed from toFixed(1)
         ],
         xAdjust: 0,
         yAdjust: 18,
@@ -1123,7 +1123,7 @@ function plotSpectrum(
         weight: "bold"
       },
       content: [
-        `${index === 0 ? "D" : "G"}: ${peak.wavelength.toFixed(1)}`
+        `${index === 0 ? "D" : "G"}: ${parseFloat(peak.wavelength).toFixed(0)}` // Changed from toFixed(1)
       ],
       xAdjust: 0,
       yAdjust: -20,
@@ -1660,10 +1660,10 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
   allPeaks.forEach((file) => {
     const temp = file.temperature.replace(" °C", "");
     const hdHg = file.hdHg != null ? file.hdHg.toFixed(2) : "N/A";
-    const dHeight = file.dHeight != null ? file.dHeight.toFixed(2) : "N/A"; // Added D peak height
-    const gHeight = file.gHeight != null ? file.gHeight.toFixed(2) : "N/A"; // Added G peak height
-    const dWidth = file.dWidth != null ? file.dWidth.toFixed(2) : "N/A";
-    const gWidth = file.gWidth != null ? file.gWidth.toFixed(2) : "N/A";
+    const dHeight = file.dHeight != null ? parseFloat(file.dHeight).toFixed(0) : "N/A";
+    const gHeight = file.gHeight != null ? parseFloat(file.gHeight).toFixed(0) : "N/A";
+    const dWidth = file.dWidth != null ? parseFloat(file.dWidth).toFixed(0) : "N/A";
+    const gWidth = file.gWidth != null ? parseFloat(file.gWidth).toFixed(0) : "N/A";
     const wdWg = file.wdWg != null ? file.wdWg.toFixed(2) : "N/A";
     const isChecked = includedSamples.has(file.name);
 
@@ -1711,8 +1711,8 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
       method
     );
 
-    const dPeakWavelength = topPeaks[0] ? topPeaks[0].wavelength.toFixed(1) : "N/A";
-    const gPeakWavelength = topPeaks[1] ? topPeaks[1].wavelength.toFixed(1) : "N/A";
+    const dPeakWavelength = topPeaks[0] ? parseFloat(topPeaks[0].wavelength).toFixed(0) : "N/A";
+    const gPeakWavelength = topPeaks[1] ? parseFloat(topPeaks[1].wavelength).toFixed(0) : "N/A";
 
     // Set individual checkbox state here
     tbodyElement.innerHTML += `
@@ -2174,7 +2174,13 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
   means.forEach((point, index) => {
     const row = document.createElement('tr');
     const paramStdDevPoint = stdDevs.find(sd => sd.x === point.x);
-    const paramStdDev = paramStdDevPoint ? paramStdDevPoint.y.toFixed(3) : "N/A";
+
+    const isWidthMetric = method.includes("Width");
+    const currentValPrecision = isWidthMetric ? 0 : (method.includes("Ratio") ? 2 : 3);
+    const currentStdDevPrecision = isWidthMetric ? 0 : (method.includes("Ratio") ? 2 : 3);
+
+    const avgFormatted = point.y.toFixed(currentValPrecision);
+    const paramStdDev = paramStdDevPoint ? paramStdDevPoint.y.toFixed(currentStdDevPrecision) : "N/A";
     
     const tempUncertData = segmentTempUncertainties.find(u => u.temp === point.x);
     let tempUncertaintyDisplay = "N/A"; 
@@ -2188,7 +2194,7 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
 
     row.innerHTML = `
       <td style="text-align:center">${point.x}</td>
-      <td style="text-align:center">${point.y.toFixed(3)}</td>
+      <td style="text-align:center">${avgFormatted}</td>
       <td style="text-align:center">${paramStdDev}</td>
       <td style="text-align:center">${tempUncertaintyDisplay}</td>
     `;
@@ -2300,11 +2306,15 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
           tooltip: {
             callbacks: {
               label: function(context) {
+                const isWidthMetric = method.toLowerCase().includes("width");
+                const currentValPrecision = isWidthMetric ? 0 : (method.toLowerCase().includes("ratio") ? 2 : 3);
+                const currentStdDevPrecision = isWidthMetric ? 0 : (method.toLowerCase().includes("ratio") ? 2 : 3);
+
                 const dsLabel = context.dataset.label;
                 const idx = context.dataIndex;
                 if (dsLabel === `${currentMethodName} Average ± SD / ± ΔT`) {
-                  const meanVal = means[idx] ? means[idx].y.toFixed(3) : 'N/A';
-                  const paramSD = paramErrorBarData_currentMethod[idx] ? paramErrorBarData_currentMethod[idx].toFixed(3) : 'N/A';
+                  const meanVal = means[idx] ? means[idx].y.toFixed(currentValPrecision) : 'N/A'; // Used currentValPrecision
+                  const paramSD = paramErrorBarData_currentMethod[idx] ? paramErrorBarData_currentMethod[idx].toFixed(currentStdDevPrecision) : 'N/A'; // Used currentStdDevPrecision
                   const tempVal = means[idx] ? means[idx].x.toFixed(0) : 'N/A';
                   // For tooltip, directly use the numerical value if available, or lookup string
                   const numericalTempUncert = tempUncertaintyValues_currentMethod[idx]; // This is ΔT or null
@@ -2325,8 +2335,8 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
                   return tooltipText;
                 }
                 const pointData = filteredData[idx];
-                if (pointData) return `${pointData.name}: ${pointData.value.toFixed(3)}`;
-                return `Value: ${context.parsed.y.toFixed(3)}`;
+                if (pointData) return `${pointData.name}: ${pointData.value.toFixed(currentValPrecision)}`; // Used currentValPrecision
+                return `Value: ${context.parsed.y.toFixed(currentValPrecision)}`; // Used currentValPrecision
               }
             }
           }
@@ -2382,13 +2392,17 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
               tooltip: {
                 callbacks: {
                   label: function(context) {
+                    const isWidthMetric = method.toLowerCase().includes("width");
+                    const currentValPrecision = isWidthMetric ? 0 : (method.toLowerCase().includes("ratio") ? 2 : 3);
+                    const currentStdDevPrecision = isWidthMetric ? 0 : (method.toLowerCase().includes("ratio") ? 2 : 3);
+
                     const dsLabel = context.dataset.label;
                     const idx = context.dataIndex;
                     let meanValue, paramSD, tempVal, tempUncertVal, stringUncertData;
 
                     if (dsLabel.includes(currentMethodName)) { // Check if it's the current method's dataset
-                      meanValue = means[idx] ? means[idx].y.toFixed(3) : 'N/A';
-                      paramSD = paramErrorBarData_currentMethod[idx] ? paramErrorBarData_currentMethod[idx].toFixed(3) : 'N/A';
+                      meanValue = means[idx] ? means[idx].y.toFixed(currentValPrecision) : 'N/A'; // Used currentValPrecision
+                      paramSD = paramErrorBarData_currentMethod[idx] ? paramErrorBarData_currentMethod[idx].toFixed(currentStdDevPrecision) : 'N/A'; // Used currentStdDevPrecision
                       tempVal = means[idx] ? means[idx].x.toFixed(0) : 'N/A';
                       // For tooltip, directly use the numerical value if available for ΔT
                       const numericalTempUncert = tempUncertaintyValues_currentMethod[idx];
@@ -2407,15 +2421,16 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
                       return tooltipText;
 
                     } else if (dsLabel.includes(otherMethodName)) {
-                      meanValue = otherMethodStats.means[idx] ? otherMethodStats.means[idx].y.toFixed(3) : 'N/A';
-                      paramSD = paramErrorBarData_otherMethod[idx] ? paramErrorBarData_otherMethod[idx].toFixed(3) : 'N/A';
+                      // For 'other' method, apply same precision logic based on the *current* plot's method title
+                      meanValue = otherMethodStats.means[idx] ? otherMethodStats.means[idx].y.toFixed(currentValPrecision) : 'N/A'; // Used currentValPrecision
+                      paramSD = paramErrorBarData_otherMethod[idx] ? paramErrorBarData_otherMethod[idx].toFixed(currentStdDevPrecision) : 'N/A'; // Used currentStdDevPrecision
                       tempVal = otherMethodStats.means[idx] ? otherMethodStats.means[idx].x.toFixed(0) : 'N/A';
                       return [`${otherMethodName} Avg: ${meanValue} ± ${paramSD} (SD)`, `Temp: ${tempVal}`];
                     }
                     // Fallback for any other dataset
                     const pointData = context.chart.data.datasets[context.datasetIndex].data[idx];
-                    if(pointData && pointData.name) return `${pointData.name}: ${pointData.value.toFixed(3)}`;
-                    return `Value: ${context.parsed.y.toFixed(3)}`;
+                    if(pointData && pointData.name) return `${pointData.name}: ${pointData.value.toFixed(currentValPrecision)}`; // Used currentValPrecision
+                    return `Value: ${context.parsed.y.toFixed(currentValPrecision)}`; // Used currentValPrecision
                   }
                 }
               }
@@ -2853,39 +2868,53 @@ function generateCalibrationCharts(data, method) {
                 label: function(context) {
                   if (context.dataset.label === 'Archaeological Sample(s)') {
                     const point = context.raw;
+                    const isArchWidthMetric = param.toLowerCase().includes("width");
+                    const archYPrecision = isArchWidthMetric ? 0 : (param.toLowerCase().includes("ratio") || param.toLowerCase().includes("hdhg") || param.toLowerCase().includes("wdwg") ? 2 : 2);
+                    const archYFormatted = parseFloat(point.y).toFixed(archYPrecision);
+
                     if (point.style === 'outOfRange') {
-                      return `${point.name || ''}: ${point.y.toFixed(2)} (Out of range, closest: ${point.closestTemp ? point.closestTemp.toFixed(0) : 'N/A'}°C)`;
+                      return `${point.name || ''}: ${archYFormatted} (Out of range, closest: ${point.closestTemp ? parseFloat(point.closestTemp).toFixed(0) : 'N/A'}°C)`;
                     }
                     // For 'onMeanLine' and 'inSdOnly'
-                    return `${point.name || ''}: (${point.x.toFixed(0)}, ${point.y.toFixed(2)})`;
+                    return `${point.name || ''}: (${parseFloat(point.x).toFixed(0)}, ${archYFormatted})`;
                   }
                   // Tooltip for points on the mean line (original dataset)
                   if (context.dataset.label === 'Calibration Mean') { 
                     const index = context.dataIndex;
                     // Ensure stats[param][index] is valid before accessing
                     if (stats[param] && stats[param][index]) {
+                      const isCalibWidthMetric = param.toLowerCase().includes("width");
+                      const calibValPrecision = isCalibWidthMetric ? 0 : (param.toLowerCase().includes("ratio") || param.toLowerCase().includes("hdhg") || param.toLowerCase().includes("wdwg") ? 2 : 3);
+                      const calibStdDevPrecision = isCalibWidthMetric ? 0 : (param.toLowerCase().includes("ratio") || param.toLowerCase().includes("hdhg") || param.toLowerCase().includes("wdwg") ? 2 : 3);
+
+                      const meanCalibFormatted = parseFloat(stats[param][index].y).toFixed(calibValPrecision);
+                      const stdDevCalibFormatted = parseFloat(stats[param][index].stdDev).toFixed(calibStdDevPrecision);
                       return [
-                        `Mean: ${stats[param][index].y.toFixed(3)} (Temp: ${stats[param][index].x.toFixed(0)})`,
-                        `± SD: ${stats[param][index].stdDev.toFixed(3)}`
+                        `Mean: ${meanCalibFormatted} (Temp: ${parseFloat(stats[param][index].x).toFixed(0)})`,
+                        `± SD: ${stdDevCalibFormatted}`
                       ];
                     }
-                    return `Mean: ${context.parsed.y.toFixed(3)}`; // Fallback
+                    return `Mean: ${parseFloat(context.parsed.y).toFixed(3)}`; // Fallback
                   }
                   // Tooltip for the band itself (upper SD line hover)
                   if (context.dataset.label === 'Calibration Range (Mean ± SD)') {
                     const index = context.dataIndex;
                      // Ensure stats[param][index] is valid before accessing
                     if (stats[param] && stats[param][index]) {
-                        return `Upper SD: ${(stats[param][index].y + stats[param][index].stdDev).toFixed(3)} (Temp: ${stats[param][index].x.toFixed(0)})`;
+                        const isCalibWidthMetric = param.toLowerCase().includes("width");
+                        const calibValPrecision = isCalibWidthMetric ? 0 : (param.toLowerCase().includes("ratio") || param.toLowerCase().includes("hdhg") || param.toLowerCase().includes("wdwg") ? 2 : 3);
+                        return `Upper SD: ${(parseFloat(stats[param][index].y) + parseFloat(stats[param][index].stdDev)).toFixed(calibValPrecision)} (Temp: ${parseFloat(stats[param][index].x).toFixed(0)})`;
                     }
-                    return `Upper SD: ${context.parsed.y.toFixed(3)}`; // Fallback
+                    return `Upper SD: ${parseFloat(context.parsed.y).toFixed(3)}`; // Fallback
                   }
                   // Fallback tooltip for other cases (e.g. lower bound if made visible)
                   const val = context.dataset.data[context.dataIndex];
                   if (val && typeof val.x !== 'undefined' && typeof val.y !== 'undefined') {
-                    return `${context.dataset.label || 'Data'}: (${val.x.toFixed(0)}, ${val.y.toFixed(3)})`;
+                    const isValWidthMetric = param.toLowerCase().includes("width");
+                    const valPrecision = isValWidthMetric ? 0 : (param.toLowerCase().includes("ratio") || param.toLowerCase().includes("hdhg") || param.toLowerCase().includes("wdwg") ? 2 : 3);
+                    return `${context.dataset.label || 'Data'}: (${parseFloat(val.x).toFixed(0)}, ${parseFloat(val.y).toFixed(valPrecision)})`;
                   }
-                  return `${context.dataset.label || 'Data'}: Y-value ${context.parsed.y.toFixed(3)}`;
+                  return `${context.dataset.label || 'Data'}: Y-value ${parseFloat(context.parsed.y).toFixed(3)}`;
                 }
               }
             }
