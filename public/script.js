@@ -1142,37 +1142,47 @@ function plotSpectrum(
 
   // Updated condition to draw fitted curves for Voigt OR Voigt5D
   if (showFitting && (method === "voigt" || method === "voigt5d") && fittedCurves && fittedCurves.length > 0) {
-    const colors = ["red", "purple", "orange", "cyan", "magenta", "lime", "brown", "black"]; // Base colors for cycling
+    const colors = ["red", "purple", "orange", "cyan", "magenta", "lime", "brown", "black"]; 
     
     fittedCurves.forEach((curve, index) => {
-      let borderColor = colors[index % colors.length]; // Default color cycling
-      let curveLabel = curve.label || `Fit ${index + 1}`; // Use label from curve object if available
-      let curveOrder = 2; // Default order (draw below main D/G)
-      let curveWidth = 1.5; // Default width
+      let borderColor = colors[index % colors.length]; 
+      let curveLabel = curve.label || `Fit ${index + 1}`; 
+      let curveOrder = 2; 
+      let curveWidth = 1.5; 
 
       if (method === "voigt") {
         // Specific styling for the standard 2-peak Voigt fit
-        borderColor = index === 0 ? "red" : "green"; // D is red, G is green
-        curveLabel = curve.label || `Fitted ${index === 0 ? 'D' : 'G'}`; // Use existing label or default
+        borderColor = index === 0 ? "red" : "green"; 
+        curveLabel = curve.label || `Fitted ${index === 0 ? 'D' : 'G'}`; 
         curveWidth = 2;
-        curveOrder = 1; // Draw standard Voigt fits above sub-peaks but below composite if ever mixed
+        curveOrder = 1; 
       } else if (method === "voigt5d") {
         // Specific styling for Voigt (5D)
-        if (curve.label && curve.label.toLowerCase().includes("d-complex (sum)")) {
-          borderColor = "firebrick"; // Prominent color for D-complex sum
+        if (curve.type === "total-fit-sum") { // Style the new Total Fit Sum
+          borderColor = "firebrick"; 
           curveOrder = 0;    // Draw on top
-          curveWidth = 2.5;
-        } else if (curve.type === "g-peak") { // Changed condition to use curve.type
+          curveWidth = 2.5;  // Bold line
+        } else if (curve.type === "g-peak-individual") { // Style the individual G peak (now thinner)
           borderColor = "green"; 
-          curveOrder = 0;     // Draw on top
-          curveWidth = 2.5;   
-        } else {
-          // Individual D sub-peaks - cycle through distinct colors
-          // Use a different set or offset of colors to distinguish from simple voigt if needed
+          curveOrder = 1;     // Draw below sum but above D-subpeaks
+          curveWidth = 1.5;   // Thinner line
+        } else if (curve.type && curve.type.startsWith("d-subpeak-")) { // Style D1, D2, D3, D4, D5
           const subPeakColors = ["purple", "orange", "teal", "magenta", "olive"];
-          borderColor = subPeakColors[index % subPeakColors.length]; 
-          curveWidth = 1;
-          curveOrder = 1; // Draw below sum/G but above raw data potentially
+          let colorIndex = index; // Fallback
+          if (curve.type.includes("D1")) colorIndex = 0;
+          else if (curve.type.includes("D2")) colorIndex = 1;
+          else if (curve.type.includes("D3")) colorIndex = 2;
+          else if (curve.type.includes("D4")) colorIndex = 3;
+          else if (curve.type.includes("D5")) colorIndex = 4;
+          
+          borderColor = subPeakColors[colorIndex % subPeakColors.length]; 
+          curveWidth = 1; // Thin lines for D sub-peaks
+          curveOrder = 2; // Draw D sub-peaks below G and Sum
+        } else {
+          // Fallback for any other unexpected curve type in voigt5d
+          borderColor = colors[index % colors.length]; // Default color cycling
+          curveWidth = 1; // Default thin line
+          curveOrder = 3; // Draw further below
         }
       }
       
@@ -1183,8 +1193,8 @@ function plotSpectrum(
         borderWidth: curveWidth,
         pointRadius: 0,
         showLine: true,
-        tension: 0, // Use 0 for unsmoothed lines from fitting
-        order: curveOrder, // Control drawing order
+        tension: 0, 
+        order: curveOrder, 
       });
     });
   }
@@ -3305,7 +3315,7 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
     }
 
     // Refined D1 initial guess
-    let d1MuInitialGuess = 1350, d1AInitialGuess = 15;
+    let d1MuInitialGuess = 1350, d1AInitialGuess = 10;
     if (xDataD_input && xDataD_input.length > 0 && yDataD_input && yDataD_input.length === xDataD_input.length) {
         let maxD1IntensityLocal = -Infinity;
         let maxD1IndexLocal = -1;
@@ -3331,11 +3341,11 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
     }
 
     let currentPeakParams = [
-        { A: d1AInitialGuess, mu: d1MuInitialGuess, sigma: 50, gamma: 45, eta: defaultEta, label: "D1 (Est.)", type: "D1" }, // D1 specific initial sigma/gamma further increased
-        { A: d1AInitialGuess * 0.3, mu: 1430, sigma: dSubPeakShapes.d2.sigma, gamma: dSubPeakShapes.d2.gamma, eta: dSubPeakShapes.d2.eta, label: "D2 (Est.)", type: "D2" }, // Use d1AInitialGuess
-        { A: d1AInitialGuess * 0.5, mu: 1510, sigma: dSubPeakShapes.d3.sigma, gamma: dSubPeakShapes.d3.gamma, eta: dSubPeakShapes.d3.eta, label: "D3 (Est.)", type: "D3" }, // Use d1AInitialGuess
-        { A: d1AInitialGuess * 0.2, mu: 1200, sigma: dSubPeakShapes.d4.sigma, gamma: dSubPeakShapes.d4.gamma, eta: dSubPeakShapes.d4.eta, label: "D4 (Est.)", type: "D4" }, // Use d1AInitialGuess, reduced factor to 0.2
-        { A: d1AInitialGuess * 0.2, mu: 1280, sigma: dSubPeakShapes.d5.sigma, gamma: dSubPeakShapes.d5.gamma, eta: dSubPeakShapes.d5.eta, label: "D5 (Est.)", type: "D5" }, // Use d1AInitialGuess
+        { A: d1AInitialGuess * 0.85, mu: d1MuInitialGuess, sigma: 55, gamma: 45, eta: defaultEta, label: "D1 (Est.)", type: "D1" }, // Reduced initial A, sigma, and gamma for D1
+        { A: d1AInitialGuess * 0.15, mu: 1620, sigma: dSubPeakShapes.d2.sigma, gamma: dSubPeakShapes.d2.gamma, eta: dSubPeakShapes.d2.eta, label: "D2 (Est.)", type: "D2" }, // Reduced D2 initial A
+        { A: d1AInitialGuess * 0.25, mu: 1510, sigma: dSubPeakShapes.d3.sigma, gamma: dSubPeakShapes.d3.gamma, eta: dSubPeakShapes.d3.eta, label: "D3 (Est.)", type: "D3" }, // Reduced D3 initial A
+        { A: d1AInitialGuess * 0.2, mu: 1200, sigma: dSubPeakShapes.d4.sigma, gamma: dSubPeakShapes.d4.gamma, eta: dSubPeakShapes.d4.eta, label: "D4 (Est.)", type: "D4" },
+        { A: d1AInitialGuess * 0.2, mu: 1280, sigma: dSubPeakShapes.d5.sigma, gamma: dSubPeakShapes.d5.gamma, eta: dSubPeakShapes.d5.eta, label: "D5 (Est.)", type: "D5" },
         { A: gAGuess, mu: gMuGuess, sigma: defaultSigma, gamma: defaultGamma, eta: defaultEta, label: "G (Est.)", type: "G" }
     ];
 
@@ -3345,25 +3355,27 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
     // --- Objective Function --- 
     function calculateModelError(peakParams, xd, yd, xg, yg) {
         let dBandError = 0;
-        const dParamsOnly = peakParams.filter(p => p.type.startsWith("D"));
-        if (xd && xd.length > 0 && yd && yd.length === xd.length && dParamsOnly.length > 0) {
+        // const dParamsOnly = peakParams.filter(p => p.type.startsWith("D")); // No longer needed here
+        if (xd && xd.length > 0 && yd && yd.length === xd.length) {
             for (let i = 0; i < xd.length; i++) {
-                const model_y_d = calculateSumOfPseudoVoigts(xd[i], dParamsOnly);
-                dBandError += Math.pow(model_y_d - yd[i], 2);
+                // Model for D-region data points now includes the sum of ALL peaks (D1-D5 + G)
+                const model_y_d_region = calculateSumOfPseudoVoigts(xd[i], peakParams);
+                dBandError += Math.pow(model_y_d_region - yd[i], 2);
             }
         } else {
-            console.warn("Voigt5D Error Calc: D-band data or params missing/mismatched for error calculation.");
+            // console.warn("Voigt5D Error Calc: D-band data or params missing/mismatched for error calculation.");
         }
 
         let gBandError = 0;
-        const gParam = peakParams.find(p => p.type === "G");
-        if (xg && xg.length > 0 && yg && yg.length === xg.length && gParam) {
+        // const gParam = peakParams.find(p => p.type === "G"); // No longer needed here
+        if (xg && xg.length > 0 && yg && yg.length === xg.length) {
             for (let i = 0; i < xg.length; i++) {
-                const model_y_g = pseudoVoigt(xg[i], gParam.A, gParam.mu, gParam.sigma, gParam.gamma, gParam.eta);
-                gBandError += Math.pow(model_y_g - yg[i], 2);
+                // Model for G-region data points now also includes the sum of ALL peaks (D1-D5 + G)
+                const model_y_g_region = calculateSumOfPseudoVoigts(xg[i], peakParams);
+                gBandError += Math.pow(model_y_g_region - yg[i], 2);
             }
         } else {
-             console.warn("Voigt5D Error Calc: G-band data or param missing/mismatched for error calculation.");
+             // console.warn("Voigt5D Error Calc: G-band data or param missing/mismatched for error calculation.");
         }
         return dBandError + gBandError;
     }
@@ -3373,25 +3385,32 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
     const optimizationIterations = 30; 
     console.log(`Starting Voigt (5D) fitting process for ${canvasIdBase} with ${optimizationIterations} iterations.`);
 
-    const learningRateGradientDescent = 2e-5; // Increased learning rate slightly
-    const convergenceThreshold = 15.0; // Stop if error change is less than this
-    const patience = 2; // Stop if error change is below threshold for this many consecutive iterations
+    const learningRateGradientDescent = 25e-5; 
+    const convergenceThreshold = 15.0; 
+    const patience = 2; 
     let stagnationCounter = 0;
+
+    let bestPeakParamsOverall = JSON.parse(JSON.stringify(currentPeakParams)); // Initialize with initial params
+    let lowestErrorOverall = calculateModelError(bestPeakParamsOverall, xDataD_input, yDataD_input, xDataG_input, yDataG_input); // Error of initial params
+    console.log(`Initial Lowest Error Overall (${canvasIdBase}): ${lowestErrorOverall.toExponential(4)}`);
+
 
     // Placeholder for a real optimization loop
     for (let iter = 0; iter < optimizationIterations; iter++) {
-        const errorBeforeIteration = calculateModelError(currentPeakParams, xDataD_input, yDataD_input, xDataG_input, yDataG_input);
-        console.log(`Iteration ${iter} (${canvasIdBase}): Starting Error = ${errorBeforeIteration.toExponential(4)}`);
+        // const errorBeforeIteration = calculateModelError(currentPeakParams, xDataD_input, yDataD_input, xDataG_input, yDataG_input); // This is now calculated below as errorAfterUpdate
+        // console.log(`Iteration ${iter} (${canvasIdBase}): Starting Error = ${errorBeforeIteration.toExponential(4)}`);
+
 
         const d1ParamsBeforeGrad = JSON.parse(JSON.stringify(currentPeakParams.find(p => p.type === "D1")));
-        console.log(`  Iter ${iter} (${canvasIdBase}) D1 PARAMS PRE-GRAD: A=${d1ParamsBeforeGrad.A.toFixed(2)}, mu=${d1ParamsBeforeGrad.mu.toFixed(2)}`);
+        // console.log(`  Iter ${iter} (${canvasIdBase}) D1 PARAMS PRE-GRAD: A=${d1ParamsBeforeGrad.A.toFixed(2)}, mu=${d1ParamsBeforeGrad.mu.toFixed(2)}`);
 
         const allGradients = [];
         const paramKeysToOptimize = ['A', 'mu', 'sigma', 'gamma', 'eta'];
 
         // --- Calculate Gradients for ALL parameters ---
         for (let peakIndex = 0; peakIndex < currentPeakParams.length; peakIndex++) {
-            const peakLabelForLog = currentPeakParams[peakIndex].label || `Peak ${peakIndex}`;
+            // ... (gradient calculation logic remains the same) ...
+// ... (inside the gradient calculation loop) ...
             for (const paramName of paramKeysToOptimize) {
                 const originalValue = currentPeakParams[peakIndex][paramName];
                 let delta = 0;
@@ -3403,16 +3422,14 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
                 else if (paramName === 'gamma') delta = (Math.abs(originalValue) * 0.005) + 0.01;
                 else if (paramName === 'eta') delta = 0.002;
 
-                if (delta === 0) { // Should not happen with current delta logic but as safeguard
+                if (delta === 0) { 
                     allGradients.push({ peakIndex, paramName, gradientValue: 0 });
-                    console.warn(`  Delta for ${peakLabelForLog} - ${paramName} is zero. Gradient set to 0.`);
+                    // console.warn(`  Delta for ${peakLabelForLog} - ${paramName} is zero. Gradient set to 0.`);
                     continue;
                 }
 
-                // Calculate errorPlusDelta
                 let paramsPlus = JSON.parse(JSON.stringify(currentPeakParams));
                 paramsPlus[peakIndex][paramName] = originalValue + delta;
-                // Clamp during temporary modification for error calculation
                 if (paramName === 'A') paramsPlus[peakIndex][paramName] = Math.max(1e-9, paramsPlus[peakIndex][paramName]);
                 if (paramName === 'sigma') paramsPlus[peakIndex][paramName] = Math.max(1e-9, paramsPlus[peakIndex][paramName]);
                 if (paramName === 'gamma') paramsPlus[peakIndex][paramName] = Math.max(1e-9, paramsPlus[peakIndex][paramName]);
@@ -3420,10 +3437,8 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
                 
                 const errorPlusDelta = calculateModelError(paramsPlus, xDataD_input, yDataD_input, xDataG_input, yDataG_input);
 
-                // Calculate errorMinusDelta
                 let paramsMinus = JSON.parse(JSON.stringify(currentPeakParams));
                 paramsMinus[peakIndex][paramName] = originalValue - delta;
-                // Clamp during temporary modification
                 if (paramName === 'A') paramsMinus[peakIndex][paramName] = Math.max(1e-9, paramsMinus[peakIndex][paramName]);
                 if (paramName === 'sigma') paramsMinus[peakIndex][paramName] = Math.max(1e-9, paramsMinus[peakIndex][paramName]);
                 if (paramName === 'gamma') paramsMinus[peakIndex][paramName] = Math.max(1e-9, paramsMinus[peakIndex][paramName]);
@@ -3433,19 +3448,23 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
 
                 const gradientValue = (errorPlusDelta - errorMinusDelta) / (2 * delta);
                 allGradients.push({ peakIndex, paramName, gradientValue });
-                // console.log(`  Grad for ${peakLabelForLog} - ${paramName}: ${gradientValue.toExponential(3)}`);
-                if (peakIndex === 0 && paramName === 'A') { // Specifically log D1.A gradient
-                    console.log(`  Iter ${iter} (${canvasIdBase}) D1.A GRADIENT: ${gradientValue.toExponential(3)}`);
-                }
+                // if (peakIndex === 0 && paramName === 'A') { 
+                //     console.log(`  Iter ${iter} (${canvasIdBase}) D1.A GRADIENT: ${gradientValue.toExponential(3)}`);
+                // }
             }
         }
         // --- End Gradient Calculation ---
+        
+        const errorBeforeUpdateThisIteration = calculateModelError(currentPeakParams, xDataD_input, yDataD_input, xDataG_input, yDataG_input);
+        // console.log(`Iter ${iter} (${canvasIdBase}) Pre-Update Error: ${errorBeforeUpdateThisIteration.toExponential(4)}`);
+
 
         // --- Gradient Descent Update Step for ALL parameters ---
         let totalGradientMagnitudeSq = 0;
         allGradients.forEach(({ peakIndex, paramName, gradientValue }) => {
+            // ... (parameter update and clamping logic remains the same) ...
             if (isNaN(gradientValue) || !isFinite(gradientValue)) {
-                console.warn(`  Skipping update for ${currentPeakParams[peakIndex].label} - ${paramName} due to NaN/Infinite gradient.`);
+                // console.warn(`  Skipping update for ${currentPeakParams[peakIndex].label} - ${paramName} due to NaN/Infinite gradient.`);
                 return;
             }
             totalGradientMagnitudeSq += gradientValue * gradientValue;
@@ -3457,119 +3476,133 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
             if (paramName === 'A') {
                 const peakType = currentPeakParams[peakIndex].type;
                 if (peakType === 'D1') {
-                    newValue = Math.max(0.1, newValue); // D1 specific amplitude clamp
+                    newValue = Math.max(0.1, newValue); 
+                    newValue = Math.min(newValue, d1AInitialGuess * 1.0); 
+                } else if (peakType === 'D2') { 
+                    newValue = Math.max(1e-2, newValue);
+                    newValue = Math.min(newValue, d1AInitialGuess * 0.35); 
+                } else if (peakType === 'D3') { 
+                    newValue = Math.max(1e-2, newValue);
+                    newValue = Math.min(newValue, d1AInitialGuess * 0.45); 
                 } else if (peakType === 'D4') {
-                    newValue = Math.max(0.1, Math.min(newValue, d1AInitialGuess * 0.4)); // D4 min and specific upper clamp
-                } else {
-                    newValue = Math.max(1e-2, newValue); // General amplitude clamp for other peaks
+                    newValue = Math.max(0.1, Math.min(newValue, d1AInitialGuess * 0.4)); 
+                } else if (peakType === 'G') { 
+                    newValue = Math.max(1e-2, newValue); 
+                    newValue = Math.min(newValue, gAGuess * 1.02); 
+                } else { 
+                    newValue = Math.max(1e-2, newValue); 
                 }
             }
             if (paramName === 'sigma') {
                 const peakType = currentPeakParams[peakIndex].type;
                 if (peakType === 'D1') {
-                    newValue = Math.max(30, newValue); // D1 specific sigma clamp increased
+                    newValue = Math.max(30, newValue); 
                 } else {
-                    newValue = Math.max(10, newValue); // General sigma clamp
+                    newValue = Math.max(10, newValue); 
                 }
             }
             if (paramName === 'gamma') {
                 const peakType = currentPeakParams[peakIndex].type;
                 if (peakType === 'D1') {
-                    newValue = Math.max(30, newValue); // D1 specific gamma clamp increased
+                    newValue = Math.max(30, newValue); 
                 } else {
-                    newValue = Math.max(10, newValue); // General gamma clamp
+                    newValue = Math.max(10, newValue); 
                 }
             }
-            if (paramName === 'eta') newValue = Math.max(0.01, Math.min(0.99, newValue)); // Eta strictly between 0.01-0.99
-
+            if (paramName === 'eta') newValue = Math.max(0.01, Math.min(0.99, newValue)); 
             if (paramName === 'mu') {
                 const peakType = currentPeakParams[peakIndex].type;
-                if (peakType === 'D1') newValue = Math.max(1320, Math.min(1390, newValue));      // Clamp D1: 1320-1390
-                else if (peakType === 'D2') newValue = Math.max(1400, Math.min(1470, newValue)); // Clamp D2: 1400-1470
+                if (peakType === 'D1') newValue = Math.max(1320, Math.min(1390, newValue));      
+                else if (peakType === 'D2') newValue = Math.max(1400, Math.min(1650, newValue)); // Adjusted D2 mu upper clamp
                 else if (peakType === 'D3') newValue = Math.max(1480, Math.min(1550, newValue));
                 else if (peakType === 'D4') newValue = Math.max(1150, Math.min(1250, newValue));
-                else if (peakType === 'D5') newValue = Math.max(1250, Math.min(1310, newValue)); // Clamp D5: 1250-1310
+                else if (peakType === 'D5') newValue = Math.max(1250, Math.min(1310, newValue)); 
                 else if (peakType === 'G') newValue = Math.max(1570, Math.min(1630, newValue));
             }
-
             currentPeakParams[peakIndex][paramName] = newValue;
         });
 
-        const d1ParamsAfterUpdate = JSON.parse(JSON.stringify(currentPeakParams.find(p => p.type === "D1")));
-        console.log(`  Iter ${iter} (${canvasIdBase}) D1 PARAMS POST-UPDATE: A=${d1ParamsAfterUpdate.A.toFixed(2)}, mu=${d1ParamsAfterUpdate.mu.toFixed(2)}`);
-
-        console.log(`  Gradient Mag.: ${(Math.sqrt(totalGradientMagnitudeSq)).toExponential(3)}. Updates applied with LR: ${learningRateGradientDescent}`);
+        // const d1ParamsAfterUpdate = JSON.parse(JSON.stringify(currentPeakParams.find(p => p.type === "D1")));
+        // console.log(`  Iter ${iter} (${canvasIdBase}) D1 PARAMS POST-UPDATE: A=${d1ParamsAfterUpdate.A.toFixed(2)}, mu=${d1ParamsAfterUpdate.mu.toFixed(2)}`);
+        // console.log(`  Gradient Mag.: ${(Math.sqrt(totalGradientMagnitudeSq)).toExponential(3)}. Updates applied with LR: ${learningRateGradientDescent}`);
         // --- End Gradient Descent Update Step ---
         
-        // The D1.A specific update is now removed as it's part of the general loop.
-        // The naive perturbation block remains commented out.
+        const errorAfterUpdateThisIteration = calculateModelError(currentPeakParams, xDataD_input, yDataD_input, xDataG_input, yDataG_input);
+        const errorChange = errorBeforeUpdateThisIteration - errorAfterUpdateThisIteration; // Error change from params *before* this iter's update
+        
+        console.log(`Iter ${iter} (${canvasIdBase}): Error Before: ${errorBeforeUpdateThisIteration.toExponential(4)}, Error After: ${errorAfterUpdateThisIteration.toExponential(4)} (Change: ${errorChange.toExponential(3)})`);
 
-        const errorAfterIteration = calculateModelError(currentPeakParams, xDataD_input, yDataD_input, xDataG_input, yDataG_input);
-        const errorChange = errorBeforeIteration - errorAfterIteration;
-        console.log(`Iteration ${iter}: Ending Error = ${errorAfterIteration.toExponential(4)} (Change: ${errorChange.toExponential(3)})`);
+        // Check if this iteration produced the best result so far
+        if (errorAfterUpdateThisIteration < lowestErrorOverall) {
+            lowestErrorOverall = errorAfterUpdateThisIteration;
+            bestPeakParamsOverall = JSON.parse(JSON.stringify(currentPeakParams)); // Deep copy
+            console.log(`    New best error found: ${lowestErrorOverall.toExponential(4)} at iteration ${iter}`);
+        }
 
         if (Math.abs(errorChange) < convergenceThreshold) {
             stagnationCounter++;
-            console.log(`  Stagnation counter: ${stagnationCounter}/${patience}`);
+            // console.log(`  Stagnation counter: ${stagnationCounter}/${patience}`);
         } else {
-            stagnationCounter = 0; // Reset if there was a significant change
+            stagnationCounter = 0; 
         }
 
         if (stagnationCounter >= patience) {
             console.log(`  Convergence achieved after ${iter + 1} iterations (error change below threshold for ${patience} iterations).`);
             break;
         }
-
-        console.log("--------------------------------------------------");
+        // console.log("--------------------------------------------------");
     }
     // --- End of Placeholder for Optimization Loop ---
 
+    console.log(`Optimization finished. Using best parameters found with error: ${lowestErrorOverall.toExponential(4)}`);
+    currentPeakParams = JSON.parse(JSON.stringify(bestPeakParamsOverall)); // Ensure currentPeakParams is the best one found
+
+
     // Use the (potentially optimized) currentPeakParams to generate curves
-    const d1FinalParams = currentPeakParams.find(p => p.type === "D1");
-    const d2FinalParams = currentPeakParams.find(p => p.type === "D2");
-    const d3FinalParams = currentPeakParams.find(p => p.type === "D3");
-    const d4FinalParams = currentPeakParams.find(p => p.type === "D4");
-    const d5FinalParams = currentPeakParams.find(p => p.type === "D5");
-    const gFinalParams  = currentPeakParams.find(p => p.type === "G");
-
-    console.log(`Voigt5D (${canvasIdBase}): Final D1 params for curve: ${JSON.stringify(d1FinalParams)}`);
-    console.log(`Voigt5D (${canvasIdBase}): Final G params for curve: ${JSON.stringify(gFinalParams)}`);
-
-    const finalAllDPeakParams = [d1FinalParams, d2FinalParams, d3FinalParams, d4FinalParams, d5FinalParams].filter(p => p); 
+    const d1Params = currentPeakParams.find(p => p.type === "D1");
+    const d2Params = currentPeakParams.find(p => p.type === "D2");
+    const d3Params = currentPeakParams.find(p => p.type === "D3");
+    const d4Params = currentPeakParams.find(p => p.type === "D4");
+    const d5Params = currentPeakParams.find(p => p.type === "D5");
+    const gParams  = currentPeakParams.find(p => p.type === "G");
 
     const fittedCurvesOut = [];
     const fullXRange = [];
     for (let x = 1000; x <= 1900; x += 1) fullXRange.push(x); 
 
-    finalAllDPeakParams.forEach(p => {
+    // Add individual D sub-peak curves
+    [d1Params, d2Params, d3Params, d4Params, d5Params].forEach(p => {
         if (p) { 
             const subPeakY = fullXRange.map(xVal => pseudoVoigt(xVal, p.A, p.mu, p.sigma, p.gamma, p.eta));
             fittedCurvesOut.push({
                 x: [...fullXRange],
                 y: subPeakY,
                 label: p.label || `${p.type} (Fit)`,
-                type: `d-subpeak-${p.type}`
+                type: `d-subpeak-${p.type}` // e.g., d-subpeak-D1 for styling
             });
         }
     });
 
-    if (finalAllDPeakParams.length > 0) {
-        const compositeDCurveY = fullXRange.map(x_val => calculateSumOfPseudoVoigts(x_val, finalAllDPeakParams));
-        fittedCurvesOut.push({
-            x: [...fullXRange],
-            y: compositeDCurveY,
-            label: "D-Complex (Sum)",
-            type: "composite-d"
-        });
-    }
-
-    if (gFinalParams) {
-        const gCurveY = fullXRange.map(xVal => pseudoVoigt(xVal, gFinalParams.A, gFinalParams.mu, gFinalParams.sigma, gFinalParams.gamma, gFinalParams.eta));
+    // Add individual G peak curve (will be styled as a thinner line)
+    if (gParams) {
+        const gCurveY = fullXRange.map(xVal => pseudoVoigt(xVal, gParams.A, gParams.mu, gParams.sigma, gParams.gamma, gParams.eta));
         fittedCurvesOut.push({
             x: [...fullXRange],
             y: gCurveY,
-            label: gFinalParams.label || "G-Peak (Fit)",
-            type: "g-peak"
+            label: gParams.label || "G (Fit)", // Label for legend
+            type: "g-peak-individual"         // Specific type for styling individual G
+        });
+    }
+
+    // Add Total Fit Sum (D1-D5 + G)
+    const allPeaksForTotalSum = [d1Params, d2Params, d3Params, d4Params, d5Params, gParams].filter(p => p); // Collect all valid peak params
+    if (allPeaksForTotalSum.length > 0) {
+        const totalFitSumY = fullXRange.map(x_val => calculateSumOfPseudoVoigts(x_val, allPeaksForTotalSum));
+        fittedCurvesOut.push({
+            x: [...fullXRange],
+            y: totalFitSumY,
+            label: "Total Fit (Sum)", // New label for the overall sum
+            type: "total-fit-sum"     // New type for styling this sum curve
         });
     }
 
@@ -3577,31 +3610,31 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
     const gBandWidthHeightPercentage = parseFloat(document.getElementById("gBandWidthHeight")?.value || 50) / 100;
     
     let d1PeakForTable = { wavelength: null, intensity: null, height: null, width: null }; 
-    if (d1FinalParams) {
-        const d1_FWHM_approx = approximateVoigtFWHM(d1FinalParams.sigma, d1FinalParams.gamma, d1FinalParams.eta);
+    if (d1Params) {
+        const d1_FWHM_approx = approximateVoigtFWHM(d1Params.sigma, d1Params.gamma, d1Params.eta);
         d1PeakForTable = {
-            wavelength: d1FinalParams.mu,
-            intensity: d1FinalParams.A,
-            height: d1FinalParams.A,
-            width: d1_FWHM_approx,
-            widthLeftX: d1FinalParams.mu - d1_FWHM_approx / 2,
-            widthRightX: d1FinalParams.mu + d1_FWHM_approx / 2,
-            widthHeight: d1FinalParams.A * dBandWidthHeightPercentage,
+            wavelength: d1Params.mu,
+            intensity: d1Params.A, 
+            height: d1Params.A,     
+            width: d1_FWHM_approx, 
+            widthLeftX: d1Params.mu - d1_FWHM_approx / 2,
+            widthRightX: d1Params.mu + d1_FWHM_approx / 2,
+            widthHeight: d1Params.A * dBandWidthHeightPercentage, 
             isD1: true
         };
     }
 
     let gPeakForTable = { wavelength: null, intensity: null, height: null, width: null }; 
-    if (gFinalParams) {
-        const g_FWHM_approx  = approximateVoigtFWHM(gFinalParams.sigma, gFinalParams.gamma, gFinalParams.eta);
+    if (gParams) {
+        const g_FWHM_approx  = approximateVoigtFWHM(gParams.sigma, gParams.gamma, gParams.eta);
         gPeakForTable = {
-            wavelength: gFinalParams.mu,
-            intensity: gFinalParams.A,
-            height: gFinalParams.A,
-            width: g_FWHM_approx,
-            widthLeftX: gFinalParams.mu - g_FWHM_approx / 2,
-            widthRightX: gFinalParams.mu + g_FWHM_approx / 2,
-            widthHeight: gFinalParams.A * gBandWidthHeightPercentage
+            wavelength: gParams.mu,
+            intensity: gParams.A, 
+            height: gParams.A,     
+            width: g_FWHM_approx, 
+            widthLeftX: gParams.mu - g_FWHM_approx / 2,
+            widthRightX: gParams.mu + g_FWHM_approx / 2,
+            widthHeight: gParams.A * gBandWidthHeightPercentage
         };
     }
 
