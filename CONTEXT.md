@@ -95,11 +95,13 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 - Temperature extraction from filenames
 - Pseudo-Voigt function fitting for peak analysis, with width calculation at user-defined % height (from experimental tab settings) to determine the reported width.
 - **Voigt (5D) Method:**
-  - Deconvolves the D-band into five pseudo-Voigt sub-peaks (D1-D5).
-  - Simultaneously fits the G-band with a single pseudo-Voigt profile.
-  - Employs an iterative gradient descent optimization to refine all peak parameters (Amplitude, Center, Sigma, Gamma, Eta).
-  - Utilizes strict parameter clamping for peak positions (`mu`), widths (`sigma`, `gamma`), amplitudes (`A`), and Lorentzian/Gaussian mixing ratio (`eta`) to ensure physically meaningful results and guide convergence.
-  - Calculates a composite "D-Complex (Sum)" curve from the sum of the D1-D5 sub-peaks for visual assessment of the overall D-band fit.
+  - Deconvolves the D-band and G-band regions using a total of six pseudo-Voigt components (D1, D2, D3, D4, D5, and G).
+  - The error calculation for the fitting process is holistic: the sum of all six components is compared against smoothed experimental data in both the D-band and G-band regions.
+  - Employs an iterative gradient descent optimization to refine all peak parameters (Amplitude, Center, Sigma, Gamma, Eta) for all six components simultaneously.
+  - The optimization process tracks and ultimately uses the set of parameters that achieved the lowest overall fitting error across all iterations, rather than just the parameters from the final iteration.
+  - Utilizes refined initial parameters and strict parameter clamping for peak positions (`mu`), widths (`sigma`, `gamma`), amplitudes (`A`), and Lorentzian/Gaussian mixing ratio (`eta`) for all components to ensure physically meaningful results and guide convergence.
+  - Calculates and displays a "Total Fit (Sum)" curve (typically bold red) representing the sum of all six fitted components (D1-D5 + G).
+  - Individual component curves for D1-D5 and the G peak are also plotted (typically as thinner lines of various colors) for detailed assessment.
   - Operates on Savitzky-Golay smoothed spectral data for improved fitting stability and robustness against noise.
 - Sophisticated interpolation and range-finding logic (`findTemperaturesForValue`, `findTemperatureRangesWithinSD`) to derive temperatures and their uncertainties/ranges from calibration curves, including handling of flat or near-flat segments.
 - Matrix operations for Savitzky-Golay coefficients
