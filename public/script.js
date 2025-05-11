@@ -802,21 +802,21 @@ function displayDerivedTemperatures(allPeaks, method, dBandWidthHeight, gBandWid
     <table border="1" style="border-collapse: collapse; width: 100%; max-width: 1200px; font-family: Arial, sans-serif; font-size: 14px; margin-bottom: 20px;">
       <thead>
         <tr style="background-color: #f2f2f2;">
-          <th style="padding: 5px; text-align: left;">Name</th>
-          <th style="padding: 5px; text-align: center;">HD/HG</th>
-          <th style="padding: 5px; text-align: center;">D Peak (cm⁻¹)</th>
-          <th style="padding: 5px; text-align: center;">G Peak (cm⁻¹)</th>
+          <th style="padding: 5px; text-align: left; width: 300px;">Name</th>
+          <th>HD/HG</th>
+          <th>D Peak (cm⁻¹)</th>
+          <th>G Peak (cm⁻¹)</th>
           <th>D width ${dBandWidthHeight + "%H"}</th>
           <th>G width ${gBandWidthHeight + "%H"}</th>
-          <th style="padding: 5px; text-align: center;">WD/WG</th>
-          <th style="padding: 5px; text-align: center;">HD/HG Temp (°C)</th>
-          <th style="padding: 5px; text-align: center;">HD/HG Range (°C)</th>
-          <th style="padding: 5px; text-align: center;">D Width Temp (°C)</th>
-          <th style="padding: 5px; text-align: center;">D Width Range (°C)</th>
-          <th style="padding: 5px; text-align: center;">G Width Temp (°C)</th>
-          <th style="padding: 5px; text-align: center;">G Width Range (°C)</th>
-          <th style="padding: 5px; text-align: center;">WD/WG Temp (°C)</th>
-          <th style="padding: 5px; text-align: center;">WD/WG Range (°C)</th>
+          <th>WD/WG</th>
+          <th>HD/HG Temp (°C)</th>
+          <th>HD/HG Range (°C)</th>
+          <th>D Width Temp (°C)</th>
+          <th>D Width Range (°C)</th>
+          <th>G Width Temp (°C)</th>
+          <th>G Width Range (°C)</th>
+          <th>WD/WG Temp (°C)</th>
+          <th>WD/WG Range (°C)</th>
         </tr>
       </thead>
       <tbody>
@@ -942,21 +942,21 @@ function displayDerivedTemperatures(allPeaks, method, dBandWidthHeight, gBandWid
 
     tbodyElement.innerHTML += `
       <tr>
-        <td style="padding: 5px;">${file.name}</td>
-        <td style="padding: 5px; text-align: center;">${hdHg}</td>
-        <td style="padding: 5px; text-align: center;">${dPeak}</td>
-        <td style="padding: 5px; text-align: center;">${gPeak}</td>
-        <td style="padding: 5px; text-align: center;">${dWidth}</td>
-        <td style="padding: 5px; text-align: center;">${gWidth}</td>
-        <td style="padding: 5px; text-align: center;">${wdWg}</td>
-        <td style="padding: 5px; text-align: center;">${derivedTemps[0].best}</td>
-        <td style="padding: 5px; text-align: center;">${derivedTemps[0].range}</td>
-        <td style="padding: 5px; text-align: center;">${derivedTemps[1].best}</td>
-        <td style="padding: 5px; text-align: center;">${derivedTemps[1].range}</td>
-        <td style="padding: 5px; text-align: center;">${derivedTemps[2].best}</td>
-        <td style="padding: 5px; text-align: center;">${derivedTemps[2].range}</td>
-        <td style="padding: 5px; text-align: center;">${derivedTemps[3].best}</td>
-        <td style="padding: 5px; text-align: center;">${derivedTemps[3].range}</td>
+        <td title="${file.name}">${file.name}</td>
+        <td>${hdHg}</td>
+        <td>${dPeak}</td>
+        <td>${gPeak}</td>
+        <td>${dWidth}</td>
+        <td>${gWidth}</td>
+        <td>${wdWg}</td>
+        <td>${derivedTemps[0].best}</td>
+        <td>${derivedTemps[0].range}</td>
+        <td>${derivedTemps[1].best}</td>
+        <td>${derivedTemps[1].range}</td>
+        <td>${derivedTemps[2].best}</td>
+        <td>${derivedTemps[2].range}</td>
+        <td>${derivedTemps[3].best}</td>
+        <td>${derivedTemps[3].range}</td>
       </tr>
     `;
   });
@@ -1894,16 +1894,16 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
           <th>
             <input type="checkbox" id="selectAllCheckbox" ${areAllSelected ? 'checked' : ''}>
           </th>
-          <th>Name</th>
-          <th>Temperature</th>
-          <th>D Peak (cm⁻¹)</th>
-          <th>G Peak (cm⁻¹)</th>
-          <th>D Peak Height</th>
-          <th>G Peak Height</th>
-          <th>HD/HG</th>
-          <th>D width ${dBandWidthHeight + "%H"}</th>
-          <th>G width ${gBandWidthHeight + "%H"}</th>
-          <th>WD/WG</th>
+          <th title="Sample name/identifier">Name</th>
+          <th title="Sample temperature in degrees Celsius">Temperature</th>
+          <th title="Position of the D band peak in wavenumbers">D Peak (cm⁻¹)</th>
+          <th title="Position of the G band peak in wavenumbers">G Peak (cm⁻¹)</th>
+          <th title="Height of the D band peak">D Peak Height</th>
+          <th title="Height of the G band peak">G Peak Height</th>
+          <th title="Ratio of D band height to G band height">HD/HG</th>
+          <th title="Width of D band peak at ${dBandWidthHeight}% of maximum height">D width ${dBandWidthHeight + "%H"}</th>
+          <th title="Width of G band peak at ${gBandWidthHeight}% of maximum height">G width ${gBandWidthHeight + "%H"}</th>
+          <th title="Ratio of D band width to G band width">WD/WG</th>
         </tr>
       </thead>
       <tbody>
@@ -2093,15 +2093,15 @@ function compareMethods(simpleData, voigtData) {
     <table border="1" style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 14px;">
       <thead>
         <tr style="background-color: #f2f2f2;">
-          <th>Parameter</th>
-          <th>Mean (Simple)</th>
-          <th>Mean (Voigt)</th>
-          <th>Mean Δ</th>
-          <th>ST.DEV Δ</th>
-          <th>ST.ERROR Δ</th>
-          <th>t-stat</th>
-          <th>p-value</th>
-          <th>Significant?</th>
+          <th title="The parameter being compared between methods">Parameter</th>
+          <th title="Mean value using the Simple method">Mean (Simple)</th>
+          <th title="Mean value using the Voigt method">Mean (Voigt)</th>
+          <th title="Mean difference between Voigt and Simple methods">Mean Δ</th>
+          <th title="Standard deviation of the differences">ST.DEV Δ</th>
+          <th title="Standard error of the mean difference">ST.ERROR Δ</th>
+          <th title="T-statistic for testing if the difference is significantly different from zero">t-stat</th>
+          <th title="P-value for the t-test (values < 0.05 indicate significant difference)">p-value</th>
+          <th title="Whether the difference between methods is statistically significant (p < 0.05)">Significant?</th>
         </tr>
       </thead>
       <tbody>
@@ -2285,7 +2285,7 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
         }
       }
       if (typeof calculatedUncertainty === 'number') {
-        lastPointUncertaintyDisplay = `End-Pt. Est: ${calculatedUncertainty.toFixed(1)}`;
+        lastPointUncertaintyDisplay = `End: ${calculatedUncertainty.toFixed(0)}`;
         lastPointNumericalUncertainty = calculatedUncertainty;
       } else {
         lastPointUncertaintyDisplay = calculatedUncertainty;
@@ -2364,21 +2364,20 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
   
   // Create table container
   const tableContainer = document.createElement('div');
-  tableContainer.style.cssText = 'flex: 0 1 400px;'; 
+  tableContainer.style.cssText = 'flex: 0 1 250px;'; 
   
   // Create and populate table
   const table = document.createElement('table');
-  table.style.cssText = 'border-collapse: collapse; font-size: 14px; font-family: Arial; width: 100%;';
-  table.setAttribute('border', '1');
+  table.className = 'stats-parameter-table';
   
   // Add table header
   const thead = document.createElement('thead');
   thead.innerHTML = `
-    <tr style="background-color: #f2f2f2;">
+    <tr>
       <th>Temp (°C)</th>
-      <th>Avg (${method})</th>
-      <th>ST.DEV (${method})</th>
-      <th>Est. Temp. Uncert. (ΔT °C)</th>
+      <th title="Average value for this parameter at this temperature">Avg</th>
+      <th title="Standard deviation of measurements at this temperature">ST.DEV</th>
+      <th title="Temperature uncertainty derived from calibration curve slope and parameter standard deviation">(ΔT °C)</th>
     </tr>
   `;
   table.appendChild(thead);
@@ -2399,8 +2398,8 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
     const tempUncertData = segmentTempUncertainties.find(u => u.temp === point.x);
     let tempUncertaintyDisplay = "N/A"; 
     if (tempUncertData) {
-        if (typeof tempUncertData.uncertainty === 'number' && !(tempUncertData.uncertainty.toString().startsWith("End-Pt. Est:"))) { // Check it's not the pre-formatted string
-             tempUncertaintyDisplay = tempUncertData.uncertainty.toFixed(1);
+        if (typeof tempUncertData.uncertainty === 'number' && !(tempUncertData.uncertainty.toString().startsWith("End"))) { // Check it's not the pre-formatted string
+             tempUncertaintyDisplay = tempUncertData.uncertainty.toFixed(0);
         } else {
             tempUncertaintyDisplay = tempUncertData.uncertainty;
         }
@@ -2536,7 +2535,7 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
                   let tooltipText = [`Avg ${method}: ${meanVal} ± ${paramSD} (SD)`];
 
                   if (numericalTempUncert !== null) {
-                      tooltipText.push(`Temp: ${tempVal} ± ${numericalTempUncert.toFixed(1)} (°C ΔT)`);
+                      tooltipText.push(`Temp: ${tempVal} ± ${numericalTempUncert.toFixed(0)} (°C ΔT)`);
                   } else {
                       // Fallback to the string version if numerical was null (e.g. "High", "N/A")
                       const stringUncertData = segmentTempUncertainties.find(u => u.temp === parseFloat(tempVal));
@@ -2623,7 +2622,7 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
                       
                       let tooltipText = [`${currentMethodName} Avg: ${meanValue} ± ${paramSD} (SD)`]; // Clarify method name
                       if (numericalTempUncert !== null) {
-                          tooltipText.push(`Temp: ${tempVal} ± ${numericalTempUncert.toFixed(1)} (°C ΔT)`);
+                          tooltipText.push(`Temp: ${tempVal} ± ${numericalTempUncert.toFixed(0)} (°C ΔT)`);
                       } else {
                           const stringUncertLookup = segmentTempUncertainties.find(u => u.temp === parseFloat(tempVal));
                           if (stringUncertLookup && typeof stringUncertLookup.uncertainty === 'string') {
