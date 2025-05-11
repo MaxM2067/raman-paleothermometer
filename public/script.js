@@ -3274,10 +3274,10 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
     let gMuGuess = 1590, gAGuess = 15, d1MuGuess = 1350, d1AGuess = 18;
     const defaultSigma = 30, defaultGamma = 25, defaultEta = 0.5; // Increased default sigma and gamma
     const dSubPeakShapes = {
-        d2: { sigma: 25, gamma: 20, eta: 0.5 },
+        d2: { sigma: 45, gamma: 40, eta: 0.5 },
         d3: { sigma: 50, gamma: 55, eta: 0.5 },
-        d4: { sigma: 50, gamma: 45, eta: 0.5 },
-        d5: { sigma: 22, gamma: 18, eta: 0.5 },
+        d4: { sigma: 65, gamma: 55, eta: 0.5 },
+        d5: { sigma: 42, gamma: 48, eta: 0.5 },
     };
 
     if (yDataG_input && yDataG_input.length > 0) {
@@ -3341,12 +3341,12 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
     }
 
     let currentPeakParams = [
-        { A: d1AInitialGuess * 0.85, mu: d1MuInitialGuess, sigma: 55, gamma: 45, eta: defaultEta, label: "D1 (Est.)", type: "D1" }, // Reduced initial A, sigma, and gamma for D1
-        { A: d1AInitialGuess * 0.15, mu: 1620, sigma: dSubPeakShapes.d2.sigma, gamma: dSubPeakShapes.d2.gamma, eta: dSubPeakShapes.d2.eta, label: "D2 (Est.)", type: "D2" }, // Reduced D2 initial A
-        { A: d1AInitialGuess * 0.35, mu: 1510, sigma: dSubPeakShapes.d3.sigma, gamma: dSubPeakShapes.d3.gamma, eta: dSubPeakShapes.d3.eta, label: "D3 (Est.)", type: "D3" }, // Reduced D3 initial A
+        { A: d1AInitialGuess * 0.80, mu: d1MuInitialGuess, sigma: 55, gamma: 45, eta: defaultEta, label: "D1 (Est.)", type: "D1" }, // Reduced initial A, sigma, and gamma for D1
+        { A: d1AInitialGuess * 0.05, mu: 1620, sigma: dSubPeakShapes.d2.sigma, gamma: dSubPeakShapes.d2.gamma, eta: dSubPeakShapes.d2.eta, label: "D2 (Est.)", type: "D2" }, // Reduced D2 initial A
+        { A: d1AInitialGuess * 0.01, mu: 1510, sigma: dSubPeakShapes.d3.sigma, gamma: dSubPeakShapes.d3.gamma, eta: dSubPeakShapes.d3.eta, label: "D3 (Est.)", type: "D3" }, // Reduced D3 initial A
         { A: d1AInitialGuess * 0.25, mu: 1200, sigma: dSubPeakShapes.d4.sigma, gamma: dSubPeakShapes.d4.gamma, eta: dSubPeakShapes.d4.eta, label: "D4 (Est.)", type: "D4" },
-        { A: d1AInitialGuess * 0.1, mu: 1480, sigma: dSubPeakShapes.d5.sigma, gamma: dSubPeakShapes.d5.gamma, eta: dSubPeakShapes.d5.eta, label: "D5 (Est.)", type: "D5" },
-        { A: gAGuess, mu: gMuGuess, sigma: defaultSigma, gamma: defaultGamma, eta: defaultEta, label: "G (Est.)", type: "G" }
+        { A: d1AInitialGuess * 0.01, mu: 1445, sigma: dSubPeakShapes.d5.sigma, gamma: dSubPeakShapes.d5.gamma, eta: dSubPeakShapes.d5.eta, label: "D5 (Est.)", type: "D5" },
+        { A: gAGuess * 0.75, mu: gMuGuess, sigma: defaultSigma, gamma: defaultGamma, eta: defaultEta, label: "G (Est.)", type: "G" }
     ];
 
     console.log(`Voigt5D (${canvasIdBase}): Initial D1 params: ${JSON.stringify(currentPeakParams.find(p => p.type === "D1"))}`);
@@ -3382,10 +3382,10 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
     // --- End of Objective Function ---
 
     // --- Modified Placeholder for Optimization Loop ---
-    const optimizationIterations = 30; 
+    const optimizationIterations = 100; 
     console.log(`Starting Voigt (5D) fitting process for ${canvasIdBase} with ${optimizationIterations} iterations.`);
 
-    const learningRateGradientDescent = 25e-5; 
+    const learningRateGradientDescent = 35e-5; 
     const convergenceThreshold = 15.0; 
     const patience = 2; 
     let stagnationCounter = 0;
@@ -3480,7 +3480,7 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
                     newValue = Math.min(newValue, d1AInitialGuess * 1.0); 
                 } else if (peakType === 'D2') { 
                     newValue = Math.max(1e-2, newValue);
-                    newValue = Math.min(newValue, d1AInitialGuess * 0.35); 
+                    newValue = Math.min(newValue, d1AInitialGuess * 0.20); 
                 } else if (peakType === 'D3') { 
                     newValue = Math.max(1e-2, newValue);
                     newValue = Math.min(newValue, d1AInitialGuess * 0.45); 
