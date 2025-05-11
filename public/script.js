@@ -481,8 +481,8 @@ function updateArchaeoPlot() {
 
   const { spectrumData } = archaeologicalFiles[selectedArchaeoIndex];
 
-  // Use experimental controls instead of archaeo ones
   const method = document.getElementById("analysisMethod").value;
+  console.log(`DEBUG_UPDATEARCHAEOPLOT: UI method at function start: ${method}`);
 
   const intervals = [
     {
@@ -518,7 +518,9 @@ function updateArchaeoPlot() {
     plotIntervals = intervals;
   }
 
-  const { topPeaks, fittedCurves } = findTopPeaks(
+  // This is for the main archaeo plot display
+  console.log(`DEBUG_UPDATEARCHAEOPLOT: UI method just before main findTopPeaks call: ${method}`);
+  const { topPeaks: displayTopPeaks, fittedCurves: displayFittedCurves } = findTopPeaks(
     spectrumData.wavelengths,
     spectrumData.intensities,
     plotIntervals,
@@ -535,8 +537,8 @@ function updateArchaeoPlot() {
 
   plotSpectrum(
     spectrumData,
-    topPeaks,
-    fittedCurves,
+    displayTopPeaks,
+    displayFittedCurves,
     intervals,
     widthPercentages,
     method,
@@ -546,17 +548,19 @@ function updateArchaeoPlot() {
   // Display derived temperatures table
   displayDerivedTemperatures(
     archaeologicalFiles.map(fileData => {
-      const { topPeaks } = findTopPeaks(
+      // This findTopPeaks is for deriving parameters for the table.
+      // It should use the UI selected method.
+      const { topPeaks: derivedTopPeaks } = findTopPeaks(
         fileData.spectrumData.wavelengths,
         fileData.spectrumData.intensities,
-        plotIntervals,
+        plotIntervals, 
         widthPercentages,
-        method,
-        "archaeoSpectrumChart"
+        method, // UI selected method
+        "archaeoSpectrumChart_derivedTemp" // Different context
       );
 
-      const d = topPeaks[0] || {};
-      const g = topPeaks[1] || {};
+      const d = derivedTopPeaks[0] || {}; // Use renamed
+      const g = derivedTopPeaks[1] || {}; // Use renamed
       const hdHg = d.height && g.height && g.height !== 0 ? d.height / g.height : null;
       const wdWg = d.width && g.width && g.width !== 0 ? d.width / g.width : null;
 
@@ -568,6 +572,8 @@ function updateArchaeoPlot() {
         wdWg,
         dPeak: d.wavelength || null,
         gPeak: g.wavelength || null,
+        dPeakWavelength: d.wavelength || null, // Store D peak wavelength
+        gPeakWavelength: g.wavelength || null  // Store G peak wavelength
       };
     }),
     method,
@@ -580,57 +586,114 @@ function updateArchaeoPlot() {
     const resultsByMethod = {
       simple: [],
       voigt: [],
-      voigt5d: [], // Add new method here
+      voigt5d: [], 
     };
 
+    // Get the currently selected analysis method from the UI
+    const currentMethodForDisplay = document.getElementById("analysisMethod").value;
+
     allFilesData.forEach((fileData) => {
-      // Skip if file is not included
-      if (!includedSamples.has(fileData.name)) return;
+      const methodsToFullyProcess = ["simple", "voigt"];
+      if (currentMethodForDisplay === "voigt5d") {
+          methodsToFullyProcess.push("voigt5d");
+      }
 
-      ["simple", "voigt", "voigt5d"].forEach((method) => {
-        const divisionPoint = getDivisionPoint(
-          fileData.spectrumData.wavelengths,
-          fileData.spectrumData.intensities,
-          intervals,
-          method
-        );
+      ["simple", "voigt", "voigt5d"].forEach((methodName) => {
+        const callContextId = methodName + "_stats_context"; // Create a distinct context ID
 
-        let plotIntervals;
-        if (method === "voigt" || method === "voigt5d") {
-          plotIntervals = [
-            { start: 1150, end: divisionPoint },
-            { start: divisionPoint, end: 1700 }
-          ];
+        if (methodsToFullyProcess.includes(methodName)) {
+          const divisionPoint = getDivisionPoint(
+            fileData.spectrumData.wavelengths,
+            fileData.spectrumData.intensities,
+            intervals, // These are UI intervals
+            methodName
+          );
+
+          let plotIntervalsForStats;
+          if (methodName === "voigt" || methodName === "voigt5d") {
+            plotIntervalsForStats = [
+              { start: 1150, end: divisionPoint },
+              { start: divisionPoint, end: 1700 }
+            ];
+          } else {
+            plotIntervalsForStats = intervals; // Use UI intervals for simple
+          }
+
+          const { topPeaks } = findTopPeaks(
+            fileData.spectrumData.wavelengths,
+            fileData.spectrumData.intensities,
+            plotIntervalsForStats,
+            widthPercentages,
+            methodName,
+            callContextId // Pass distinct context ID
+          );
+
+          const d = topPeaks[0] || {};
+          const g = topPeaks[1] || {};
+          const hdHg = d.height && g.height && g.height !== 0 ? d.height / g.height : null;
+          const wdWg = d.width && g.width && g.width !== 0 ? d.width / g.width : null;
+          const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
+          const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
+
+          resultsByMethod[methodName].push({
+            name: fileData.name,
+            temperature,
+            hdHg,
+            dHeight: d.height || null,
+            gHeight: g.height || null,
+            dWidth: d.width || null,
+            gWidth: g.width || null,
+            wdWg,
+            dPeakWavelength: d.wavelength || null,
+            gPeakWavelength: g.wavelength || null
+          });
         } else {
-          plotIntervals = intervals;
+          // This case applies to "voigt5d" when it's not the currentMethodForDisplay.
+          // Populate with placeholder data.
+          const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
+          const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
+          resultsByMethod[methodName].push({ // methodName here will be "voigt5d"
+            name: fileData.name,
+            temperature,
+            hdHg: null, dHeight: null, gHeight: null, dWidth: null, gWidth: null, wdWg: null,
+            dPeakWavelength: null, gPeakWavelength: null
+          });
         }
-
-        const { topPeaks } = findTopPeaks(
-          fileData.spectrumData.wavelengths,
-          fileData.spectrumData.intensities,
-          plotIntervals,
-          widthPercentages,
-          method,
-        );
-
-        const d = topPeaks[0] || {};
-        const g = topPeaks[1] || {};
-        const hdHg = d.height && g.height && g.height !== 0 ? d.height / g.height : null;
-        const wdWg = d.width && g.width && g.width !== 0 ? d.width / g.width : null;
-
-        const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
-        const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
-
-        resultsByMethod[method].push({
-          name: fileData.name,
-          temperature,
-          hdHg,
-          dWidth: d.width || null,
-          gWidth: g.width || null,
-          wdWg,
-        });
       });
     });
+
+    // Ensure resultsByMethod.voigt5d is at least an empty array if not processed
+    if (!resultsByMethod.voigt5d) {
+        resultsByMethod.voigt5d = [];
+    }
+
+    // Calculate divisionPoint for the current spectrum being displayed
+    const divisionPointForDisplay = getDivisionPoint(
+      spectrumData.wavelengths,
+      spectrumData.intensities,
+      intervals, // UI intervals for the specific method being displayed
+      currentMethodForDisplay
+    );
+
+    // Use broad intervals only for Voigt, otherwise use user intervals for display
+    let plotIntervalsForDisplay;
+    if (currentMethodForDisplay === "voigt" || currentMethodForDisplay === "voigt5d") {
+      plotIntervalsForDisplay = [
+        { start: 1150, end: divisionPointForDisplay },
+        { start: divisionPointForDisplay, end: 1700 }
+      ];
+    } else {
+      plotIntervalsForDisplay = intervals;
+    }
+
+    const { topPeaks, fittedCurves } = findTopPeaks(
+      spectrumData.wavelengths,
+      spectrumData.intensities,
+      plotIntervalsForDisplay, // Use display-specific intervals
+      widthPercentages,
+      currentMethodForDisplay, // Use the method selected in the UI
+      "spectrumChart"
+    );
 
     // Generate calibration charts using Voigt method data
     const container = document.getElementById('archaeoCalibrationPlots');
@@ -878,7 +941,8 @@ function updatePeak1Inputs() {
 function updatePlot(spectrumData) {
   if (!spectrumData || allFilesData.length === 0) return;
 
-  const currentMethod = document.getElementById("analysisMethod").value;
+  const currentMethodForDisplay = document.getElementById("analysisMethod").value;
+  console.log(`DEBUG_UPDATEPLOT: currentMethodForDisplay at function start: ${currentMethodForDisplay}`);
 
   const intervals = [
     {
@@ -906,68 +970,86 @@ function updatePlot(spectrumData) {
   };
 
   allFilesData.forEach((fileData) => {
-    ["simple", "voigt", "voigt5d"].forEach((method) => {
-      // Calculate division point for this file
-      const divisionPoint = getDivisionPoint(
-        fileData.spectrumData.wavelengths,
-        fileData.spectrumData.intensities,
-        intervals,
-        method
-      );
+    const methodsToFullyProcess = ["simple", "voigt"];
+    if (currentMethodForDisplay === "voigt5d") {
+        methodsToFullyProcess.push("voigt5d");
+    }
 
-      // Use broad intervals for Voigt, user intervals for Simple
-      let plotIntervals;
-      if (method === "voigt" || method === "voigt5d") {
-        plotIntervals = [
-          { start: 1150, end: divisionPoint },
-          { start: divisionPoint, end: 1700 }
-        ];
+    ["simple", "voigt", "voigt5d"].forEach((methodName) => {
+      const callContextId = methodName + "_stats_context"; // Create a distinct context ID
+
+      if (methodsToFullyProcess.includes(methodName)) {
+        const divisionPoint = getDivisionPoint(
+          fileData.spectrumData.wavelengths,
+          fileData.spectrumData.intensities,
+          intervals, // These are UI intervals
+          methodName
+        );
+
+        let plotIntervalsForStats;
+        if (methodName === "voigt" || methodName === "voigt5d") {
+          plotIntervalsForStats = [
+            { start: 1150, end: divisionPoint },
+            { start: divisionPoint, end: 1700 }
+          ];
+        } else {
+          plotIntervalsForStats = intervals; // Use UI intervals for simple
+        }
+
+        const { topPeaks } = findTopPeaks(
+          fileData.spectrumData.wavelengths,
+          fileData.spectrumData.intensities,
+          plotIntervalsForStats,
+          widthPercentages,
+          methodName,
+          callContextId // Pass distinct context ID
+        );
+
+        const d = topPeaks[0] || {};
+        const g = topPeaks[1] || {};
+        const hdHg = d.height && g.height && g.height !== 0 ? d.height / g.height : null;
+        const wdWg = d.width && g.width && g.width !== 0 ? d.width / g.width : null;
+        const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
+        const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
+
+        resultsByMethod[methodName].push({
+          name: fileData.name,
+          temperature,
+          hdHg,
+          dHeight: d.height || null,
+          gHeight: g.height || null,
+          dWidth: d.width || null,
+          gWidth: g.width || null,
+          wdWg,
+          dPeakWavelength: d.wavelength || null,
+          gPeakWavelength: g.wavelength || null
+        });
       } else {
-        plotIntervals = intervals;
+        // This case applies to "voigt5d" when it's not the currentMethodForDisplay.
+        // Populate with placeholder data.
+        const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
+        const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
+        resultsByMethod[methodName].push({ // methodName here will be "voigt5d"
+          name: fileData.name,
+          temperature,
+          hdHg: null, dHeight: null, gHeight: null, dWidth: null, gWidth: null, wdWg: null,
+          dPeakWavelength: null, gPeakWavelength: null
+        });
       }
-
-      const { topPeaks } = findTopPeaks(
-        fileData.spectrumData.wavelengths,
-        fileData.spectrumData.intensities,
-        plotIntervals,
-        widthPercentages,
-        method,
-      );
-
-      const d = topPeaks[0] || {};
-      const g = topPeaks[1] || {};
-      const hdHg =
-        d.height && g.height && g.height !== 0 ? d.height / g.height : null;
-      const wdWg =
-        d.width && g.width && g.width !== 0 ? d.width / g.width : null;
-
-      const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
-      const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
-
-      resultsByMethod[method].push({
-        name: fileData.name,
-        temperature,
-        hdHg,
-        dHeight: d.height || null, // Added D peak height
-        gHeight: g.height || null, // Added G peak height
-        dWidth: d.width || null,
-        gWidth: g.width || null,
-        wdWg,
-      });
     });
   });
 
-  // Calculate divisionPoint for the current spectrum
+  // Calculate divisionPoint for the current spectrum being displayed
   const divisionPoint = getDivisionPoint(
     spectrumData.wavelengths,
     spectrumData.intensities,
     intervals,
-    currentMethod
+    currentMethodForDisplay
   );
 
   // Use broad intervals only for Voigt, otherwise use user intervals
   let plotIntervals;
-  if (currentMethod === "voigt" || currentMethod === "voigt5d") {
+  if (currentMethodForDisplay === "voigt" || currentMethodForDisplay === "voigt5d") {
     plotIntervals = [
       { start: 1150, end: divisionPoint },
       { start: divisionPoint, end: 1700 }
@@ -981,7 +1063,7 @@ function updatePlot(spectrumData) {
     spectrumData.intensities,
     plotIntervals,
     widthPercentages,
-    currentMethod,
+    currentMethodForDisplay,
     "spectrumChart"
   );
   plotSpectrum(
@@ -990,13 +1072,13 @@ function updatePlot(spectrumData) {
     fittedCurves,
     intervals,
     widthPercentages,
-    currentMethod,
+    currentMethodForDisplay,
   );
 
   // Display normal peak info table
   displayPeakInfo(
-    resultsByMethod[currentMethod],
-    currentMethod,
+    resultsByMethod[currentMethodForDisplay],
+    currentMethodForDisplay,
     dBandWidthHeight,
     gBandWidthHeight,
     resultsByMethod
@@ -1080,10 +1162,10 @@ function plotSpectrum(
           borderColor = "firebrick"; // Prominent color for D-complex sum
           curveOrder = 0;    // Draw on top
           curveWidth = 2.5;
-        } else if (curve.label && curve.label.toLowerCase().includes("g-peak")) {
-          borderColor = "darkgreen"; // Prominent color for G-peak
+        } else if (curve.type === "g-peak") { // Changed condition to use curve.type
+          borderColor = "green"; 
           curveOrder = 0;     // Draw on top
-          curveWidth = 2.0;
+          curveWidth = 2.5;   
         } else {
           // Individual D sub-peaks - cycle through distinct colors
           // Use a different set or offset of colors to distinguish from simple voigt if needed
@@ -1235,22 +1317,25 @@ function findTopPeaks(
   method,
   canvasId = "spectrumChart"
 ) {
+  console.log(`DEBUG_FINDTOPPEAKS: Entry. Method: '${method}', CanvasID: '${canvasId}'`); // Added this log
   let topPeaks = [];
   let fittedCurves = []; 
 
   if (method === "voigt5d") {
     console.log("findTopPeaks: Voigt (5D) method selected.");
 
+    const smoothedIntensities = savitzkyGolaySmooth(intensities, 11, 2); // Smooth the intensities once
+
     const dComplexDataRegion = { start: 1100, end: 1680 }; 
     const gPeakDataRegion    = { start: 1500, end: 1750 }; 
 
     const dIndices = wavelengths.map((w, i) => i).filter(i => wavelengths[i] >= dComplexDataRegion.start && wavelengths[i] <= dComplexDataRegion.end);
     const xDataD = dIndices.map(i => wavelengths[i]);
-    const yDataD = dIndices.map(i => intensities[i]);
+    const yDataD = dIndices.map(i => smoothedIntensities[i]); // Use smoothed intensities for D-band data
 
     const gIndices = wavelengths.map((w, i) => i).filter(i => wavelengths[i] >= gPeakDataRegion.start && wavelengths[i] <= gPeakDataRegion.end);
     const xDataG = gIndices.map(i => wavelengths[i]);
-    const yDataG = gIndices.map(i => intensities[i]);
+    const yDataG = gIndices.map(i => smoothedIntensities[i]); // Use smoothed intensities for G-band data
 
     if (typeof fitDComplexAndGPeak_Voigt5D !== 'function') {
         console.error("CRITICAL: fitDComplexAndGPeak_Voigt5D function is not defined! Cannot perform Voigt (5D) fitting.");
@@ -3159,85 +3244,366 @@ function findTemperatureRangesWithinSD(temps, means, stds, value) {
     return mergedRanges.filter(range => range.end > range.start + 1e-9);
 }
 
+// NEW HELPER FUNCTION
+function calculateSumOfPseudoVoigts(x, peakParamsArray) {
+  let totalIntensity = 0;
+  for (const params of peakParamsArray) {
+    if (params) { // Ensure params object exists
+      totalIntensity += pseudoVoigt(x, params.A, params.mu, params.sigma, params.gamma, params.eta);
+    }
+  }
+  return totalIntensity;
+}
+
 // STUB function for Voigt (5D) fitting.
 // REPLACE THE BODY WITH ACTUAL FITTING LOGIC LATER.
 function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, yDataG_input, canvasIdBase = "spectrumChart_voigt5d_stub") {
     console.log("Executing STUB fitDComplexAndGPeak_Voigt5D with D-data length:", xDataD_input.length, "G-data length:", xDataG_input.length);
 
-    // Hardcoded parameters for demonstration
-    const d1Params = { A: 18, mu: 1350, sigma: 25, gamma: 20, eta: 0.5, label: "D1 (Stub)" };
-    const d2Params = { A: 10, mu: 1615, sigma: 15, gamma: 10, eta: 0.5, label: "D2 (Stub)" }; // Might overlap with G
-    const d3Params = { A: 8,  mu: 1510, sigma: 20, gamma: 15, eta: 0.5, label: "D3 (Stub)" };
-    const d4Params = { A: 6,  mu: 1200, sigma: 30, gamma: 25, eta: 0.5, label: "D4 (Stub)" };
-    const d5Params = { A: 5,  mu: 1280, sigma: 22, gamma: 18, eta: 0.5, label: "D5 (Stub)" };
-    const gParams  = { A: 15, mu: 1590, sigma: 20, gamma: 15, eta: 0.5, label: "G (Stub)"  };
+    // --- Initial Parameter Estimation --- 
+    let gMuGuess = 1590, gAGuess = 15, d1MuGuess = 1350, d1AGuess = 18;
+    const defaultSigma = 30, defaultGamma = 25, defaultEta = 0.5; // Increased default sigma and gamma
+    const dSubPeakShapes = {
+        d2: { sigma: 15, gamma: 10, eta: 0.5 },
+        d3: { sigma: 20, gamma: 15, eta: 0.5 },
+        d4: { sigma: 30, gamma: 25, eta: 0.5 },
+        d5: { sigma: 22, gamma: 18, eta: 0.5 },
+    };
 
-    const allDPeakParams = [d1Params, d2Params, d3Params, d4Params, d5Params];
+    if (yDataG_input && yDataG_input.length > 0) {
+        let maxGIntensity = -Infinity;
+        let maxGIndex = -1;
+        for (let i = 0; i < yDataG_input.length; i++) {
+            if (yDataG_input[i] > maxGIntensity) {
+                maxGIntensity = yDataG_input[i];
+                maxGIndex = i;
+            }
+        }
+        if (maxGIndex !== -1) {
+            gMuGuess = xDataG_input[maxGIndex];
+            gAGuess = maxGIntensity;
+        }
+    } else {
+        console.warn("Voigt5D: yDataG_input is empty, using default G peak guesses.");
+    }
+
+    if (yDataD_input && yDataD_input.length > 0) {
+        let maxD1Intensity = -Infinity;
+        let maxD1Index = -1;
+        for (let i = 0; i < yDataD_input.length; i++) {
+            if (yDataD_input[i] > maxD1Intensity) {
+                maxD1Intensity = yDataD_input[i];
+                maxD1Index = i;
+            }
+        }
+        if (maxD1Index !== -1) {
+            d1MuGuess = xDataD_input[maxD1Index];
+            d1AGuess = maxD1Intensity;
+        }
+    } else {
+        console.warn("Voigt5D: yDataD_input is empty, using default D1 peak guesses.");
+    }
+
+    // Refined D1 initial guess
+    let d1MuInitialGuess = 1350, d1AInitialGuess = 15;
+    if (xDataD_input && xDataD_input.length > 0 && yDataD_input && yDataD_input.length === xDataD_input.length) {
+        let maxD1IntensityLocal = -Infinity;
+        let maxD1IndexLocal = -1;
+        const d1RegionStart = 1320, d1RegionEnd = 1390;
+        for (let i = 0; i < xDataD_input.length; i++) {
+            if (xDataD_input[i] >= d1RegionStart && xDataD_input[i] <= d1RegionEnd) {
+                if (yDataD_input[i] > maxD1IntensityLocal) {
+                    maxD1IntensityLocal = yDataD_input[i];
+                    maxD1IndexLocal = i;
+                }
+            }
+        }
+        if (maxD1IndexLocal !== -1) {
+            d1MuInitialGuess = xDataD_input[maxD1IndexLocal];
+            d1AInitialGuess = maxD1IntensityLocal;
+            console.log(`Voigt5D (${canvasIdBase}): Refined D1 Initial Guess: mu=${d1MuInitialGuess.toFixed(2)}, A=${d1AInitialGuess.toFixed(2)} from range [${d1RegionStart}-${d1RegionEnd}]`);
+        } else {
+            console.warn(`Voigt5D (${canvasIdBase}): Could not find peak for D1 in range [${d1RegionStart}-${d1RegionEnd}], using defaults.`);
+            // d1MuGuess and d1AGuess (broader search) will be used via currentPeakParams if this fails
+        }
+    } else {
+        console.warn("Voigt5D: D-band data missing for refined D1 initial guess.");
+    }
+
+    let currentPeakParams = [
+        { A: d1AInitialGuess, mu: d1MuInitialGuess, sigma: 50, gamma: 45, eta: defaultEta, label: "D1 (Est.)", type: "D1" }, // D1 specific initial sigma/gamma further increased
+        { A: d1AInitialGuess * 0.3, mu: 1430, sigma: dSubPeakShapes.d2.sigma, gamma: dSubPeakShapes.d2.gamma, eta: dSubPeakShapes.d2.eta, label: "D2 (Est.)", type: "D2" }, // Use d1AInitialGuess
+        { A: d1AInitialGuess * 0.5, mu: 1510, sigma: dSubPeakShapes.d3.sigma, gamma: dSubPeakShapes.d3.gamma, eta: dSubPeakShapes.d3.eta, label: "D3 (Est.)", type: "D3" }, // Use d1AInitialGuess
+        { A: d1AInitialGuess * 0.2, mu: 1200, sigma: dSubPeakShapes.d4.sigma, gamma: dSubPeakShapes.d4.gamma, eta: dSubPeakShapes.d4.eta, label: "D4 (Est.)", type: "D4" }, // Use d1AInitialGuess, reduced factor to 0.2
+        { A: d1AInitialGuess * 0.2, mu: 1280, sigma: dSubPeakShapes.d5.sigma, gamma: dSubPeakShapes.d5.gamma, eta: dSubPeakShapes.d5.eta, label: "D5 (Est.)", type: "D5" }, // Use d1AInitialGuess
+        { A: gAGuess, mu: gMuGuess, sigma: defaultSigma, gamma: defaultGamma, eta: defaultEta, label: "G (Est.)", type: "G" }
+    ];
+
+    console.log(`Voigt5D (${canvasIdBase}): Initial D1 params: ${JSON.stringify(currentPeakParams.find(p => p.type === "D1"))}`);
+    console.log(`Voigt5D (${canvasIdBase}): Initial G params: ${JSON.stringify(currentPeakParams.find(p => p.type === "G"))}`);
+
+    // --- Objective Function --- 
+    function calculateModelError(peakParams, xd, yd, xg, yg) {
+        let dBandError = 0;
+        const dParamsOnly = peakParams.filter(p => p.type.startsWith("D"));
+        if (xd && xd.length > 0 && yd && yd.length === xd.length && dParamsOnly.length > 0) {
+            for (let i = 0; i < xd.length; i++) {
+                const model_y_d = calculateSumOfPseudoVoigts(xd[i], dParamsOnly);
+                dBandError += Math.pow(model_y_d - yd[i], 2);
+            }
+        } else {
+            console.warn("Voigt5D Error Calc: D-band data or params missing/mismatched for error calculation.");
+        }
+
+        let gBandError = 0;
+        const gParam = peakParams.find(p => p.type === "G");
+        if (xg && xg.length > 0 && yg && yg.length === xg.length && gParam) {
+            for (let i = 0; i < xg.length; i++) {
+                const model_y_g = pseudoVoigt(xg[i], gParam.A, gParam.mu, gParam.sigma, gParam.gamma, gParam.eta);
+                gBandError += Math.pow(model_y_g - yg[i], 2);
+            }
+        } else {
+             console.warn("Voigt5D Error Calc: G-band data or param missing/mismatched for error calculation.");
+        }
+        return dBandError + gBandError;
+    }
+    // --- End of Objective Function ---
+
+    // --- Modified Placeholder for Optimization Loop ---
+    const optimizationIterations = 30; 
+    console.log(`Starting Voigt (5D) fitting process for ${canvasIdBase} with ${optimizationIterations} iterations.`);
+
+    const learningRateGradientDescent = 2e-5; // Increased learning rate slightly
+    const convergenceThreshold = 15.0; // Stop if error change is less than this
+    const patience = 2; // Stop if error change is below threshold for this many consecutive iterations
+    let stagnationCounter = 0;
+
+    // Placeholder for a real optimization loop
+    for (let iter = 0; iter < optimizationIterations; iter++) {
+        const errorBeforeIteration = calculateModelError(currentPeakParams, xDataD_input, yDataD_input, xDataG_input, yDataG_input);
+        console.log(`Iteration ${iter} (${canvasIdBase}): Starting Error = ${errorBeforeIteration.toExponential(4)}`);
+
+        const d1ParamsBeforeGrad = JSON.parse(JSON.stringify(currentPeakParams.find(p => p.type === "D1")));
+        console.log(`  Iter ${iter} (${canvasIdBase}) D1 PARAMS PRE-GRAD: A=${d1ParamsBeforeGrad.A.toFixed(2)}, mu=${d1ParamsBeforeGrad.mu.toFixed(2)}`);
+
+        const allGradients = [];
+        const paramKeysToOptimize = ['A', 'mu', 'sigma', 'gamma', 'eta'];
+
+        // --- Calculate Gradients for ALL parameters ---
+        for (let peakIndex = 0; peakIndex < currentPeakParams.length; peakIndex++) {
+            const peakLabelForLog = currentPeakParams[peakIndex].label || `Peak ${peakIndex}`;
+            for (const paramName of paramKeysToOptimize) {
+                const originalValue = currentPeakParams[peakIndex][paramName];
+                let delta = 0;
+
+                // Define delta based on paramName
+                if (paramName === 'A') delta = (Math.abs(originalValue) * 0.001) + 0.01;
+                else if (paramName === 'mu') delta = 0.05;
+                else if (paramName === 'sigma') delta = (Math.abs(originalValue) * 0.005) + 0.01;
+                else if (paramName === 'gamma') delta = (Math.abs(originalValue) * 0.005) + 0.01;
+                else if (paramName === 'eta') delta = 0.002;
+
+                if (delta === 0) { // Should not happen with current delta logic but as safeguard
+                    allGradients.push({ peakIndex, paramName, gradientValue: 0 });
+                    console.warn(`  Delta for ${peakLabelForLog} - ${paramName} is zero. Gradient set to 0.`);
+                    continue;
+                }
+
+                // Calculate errorPlusDelta
+                let paramsPlus = JSON.parse(JSON.stringify(currentPeakParams));
+                paramsPlus[peakIndex][paramName] = originalValue + delta;
+                // Clamp during temporary modification for error calculation
+                if (paramName === 'A') paramsPlus[peakIndex][paramName] = Math.max(1e-9, paramsPlus[peakIndex][paramName]);
+                if (paramName === 'sigma') paramsPlus[peakIndex][paramName] = Math.max(1e-9, paramsPlus[peakIndex][paramName]);
+                if (paramName === 'gamma') paramsPlus[peakIndex][paramName] = Math.max(1e-9, paramsPlus[peakIndex][paramName]);
+                if (paramName === 'eta') paramsPlus[peakIndex][paramName] = Math.max(0.001, Math.min(0.999, paramsPlus[peakIndex][paramName]));
+                
+                const errorPlusDelta = calculateModelError(paramsPlus, xDataD_input, yDataD_input, xDataG_input, yDataG_input);
+
+                // Calculate errorMinusDelta
+                let paramsMinus = JSON.parse(JSON.stringify(currentPeakParams));
+                paramsMinus[peakIndex][paramName] = originalValue - delta;
+                // Clamp during temporary modification
+                if (paramName === 'A') paramsMinus[peakIndex][paramName] = Math.max(1e-9, paramsMinus[peakIndex][paramName]);
+                if (paramName === 'sigma') paramsMinus[peakIndex][paramName] = Math.max(1e-9, paramsMinus[peakIndex][paramName]);
+                if (paramName === 'gamma') paramsMinus[peakIndex][paramName] = Math.max(1e-9, paramsMinus[peakIndex][paramName]);
+                if (paramName === 'eta') paramsMinus[peakIndex][paramName] = Math.max(0.001, Math.min(0.999, paramsMinus[peakIndex][paramName]));
+
+                const errorMinusDelta = calculateModelError(paramsMinus, xDataD_input, yDataD_input, xDataG_input, yDataG_input);
+
+                const gradientValue = (errorPlusDelta - errorMinusDelta) / (2 * delta);
+                allGradients.push({ peakIndex, paramName, gradientValue });
+                // console.log(`  Grad for ${peakLabelForLog} - ${paramName}: ${gradientValue.toExponential(3)}`);
+                if (peakIndex === 0 && paramName === 'A') { // Specifically log D1.A gradient
+                    console.log(`  Iter ${iter} (${canvasIdBase}) D1.A GRADIENT: ${gradientValue.toExponential(3)}`);
+                }
+            }
+        }
+        // --- End Gradient Calculation ---
+
+        // --- Gradient Descent Update Step for ALL parameters ---
+        let totalGradientMagnitudeSq = 0;
+        allGradients.forEach(({ peakIndex, paramName, gradientValue }) => {
+            if (isNaN(gradientValue) || !isFinite(gradientValue)) {
+                console.warn(`  Skipping update for ${currentPeakParams[peakIndex].label} - ${paramName} due to NaN/Infinite gradient.`);
+                return;
+            }
+            totalGradientMagnitudeSq += gradientValue * gradientValue;
+
+            const oldValue = currentPeakParams[peakIndex][paramName];
+            let newValue = oldValue - learningRateGradientDescent * gradientValue;
+
+            // Clamping after update
+            if (paramName === 'A') {
+                const peakType = currentPeakParams[peakIndex].type;
+                if (peakType === 'D1') {
+                    newValue = Math.max(0.1, newValue); // D1 specific amplitude clamp
+                } else if (peakType === 'D4') {
+                    newValue = Math.max(0.1, Math.min(newValue, d1AInitialGuess * 0.4)); // D4 min and specific upper clamp
+                } else {
+                    newValue = Math.max(1e-2, newValue); // General amplitude clamp for other peaks
+                }
+            }
+            if (paramName === 'sigma') {
+                const peakType = currentPeakParams[peakIndex].type;
+                if (peakType === 'D1') {
+                    newValue = Math.max(30, newValue); // D1 specific sigma clamp increased
+                } else {
+                    newValue = Math.max(10, newValue); // General sigma clamp
+                }
+            }
+            if (paramName === 'gamma') {
+                const peakType = currentPeakParams[peakIndex].type;
+                if (peakType === 'D1') {
+                    newValue = Math.max(30, newValue); // D1 specific gamma clamp increased
+                } else {
+                    newValue = Math.max(10, newValue); // General gamma clamp
+                }
+            }
+            if (paramName === 'eta') newValue = Math.max(0.01, Math.min(0.99, newValue)); // Eta strictly between 0.01-0.99
+
+            if (paramName === 'mu') {
+                const peakType = currentPeakParams[peakIndex].type;
+                if (peakType === 'D1') newValue = Math.max(1320, Math.min(1390, newValue));      // Clamp D1: 1320-1390
+                else if (peakType === 'D2') newValue = Math.max(1400, Math.min(1470, newValue)); // Clamp D2: 1400-1470
+                else if (peakType === 'D3') newValue = Math.max(1480, Math.min(1550, newValue));
+                else if (peakType === 'D4') newValue = Math.max(1150, Math.min(1250, newValue));
+                else if (peakType === 'D5') newValue = Math.max(1250, Math.min(1310, newValue)); // Clamp D5: 1250-1310
+                else if (peakType === 'G') newValue = Math.max(1570, Math.min(1630, newValue));
+            }
+
+            currentPeakParams[peakIndex][paramName] = newValue;
+        });
+
+        const d1ParamsAfterUpdate = JSON.parse(JSON.stringify(currentPeakParams.find(p => p.type === "D1")));
+        console.log(`  Iter ${iter} (${canvasIdBase}) D1 PARAMS POST-UPDATE: A=${d1ParamsAfterUpdate.A.toFixed(2)}, mu=${d1ParamsAfterUpdate.mu.toFixed(2)}`);
+
+        console.log(`  Gradient Mag.: ${(Math.sqrt(totalGradientMagnitudeSq)).toExponential(3)}. Updates applied with LR: ${learningRateGradientDescent}`);
+        // --- End Gradient Descent Update Step ---
+        
+        // The D1.A specific update is now removed as it's part of the general loop.
+        // The naive perturbation block remains commented out.
+
+        const errorAfterIteration = calculateModelError(currentPeakParams, xDataD_input, yDataD_input, xDataG_input, yDataG_input);
+        const errorChange = errorBeforeIteration - errorAfterIteration;
+        console.log(`Iteration ${iter}: Ending Error = ${errorAfterIteration.toExponential(4)} (Change: ${errorChange.toExponential(3)})`);
+
+        if (Math.abs(errorChange) < convergenceThreshold) {
+            stagnationCounter++;
+            console.log(`  Stagnation counter: ${stagnationCounter}/${patience}`);
+        } else {
+            stagnationCounter = 0; // Reset if there was a significant change
+        }
+
+        if (stagnationCounter >= patience) {
+            console.log(`  Convergence achieved after ${iter + 1} iterations (error change below threshold for ${patience} iterations).`);
+            break;
+        }
+
+        console.log("--------------------------------------------------");
+    }
+    // --- End of Placeholder for Optimization Loop ---
+
+    // Use the (potentially optimized) currentPeakParams to generate curves
+    const d1FinalParams = currentPeakParams.find(p => p.type === "D1");
+    const d2FinalParams = currentPeakParams.find(p => p.type === "D2");
+    const d3FinalParams = currentPeakParams.find(p => p.type === "D3");
+    const d4FinalParams = currentPeakParams.find(p => p.type === "D4");
+    const d5FinalParams = currentPeakParams.find(p => p.type === "D5");
+    const gFinalParams  = currentPeakParams.find(p => p.type === "G");
+
+    console.log(`Voigt5D (${canvasIdBase}): Final D1 params for curve: ${JSON.stringify(d1FinalParams)}`);
+    console.log(`Voigt5D (${canvasIdBase}): Final G params for curve: ${JSON.stringify(gFinalParams)}`);
+
+    const finalAllDPeakParams = [d1FinalParams, d2FinalParams, d3FinalParams, d4FinalParams, d5FinalParams].filter(p => p); 
+
     const fittedCurvesOut = [];
     const fullXRange = [];
-    for (let x = 1000; x <= 1900; x += 1) fullXRange.push(x); // Consistent X range for all curves
+    for (let x = 1000; x <= 1900; x += 1) fullXRange.push(x); 
 
-    // Individual D sub-peak curves
-    const dSubPeakCurvesY = allDPeakParams.map(p =>
-        fullXRange.map(xVal => pseudoVoigt(xVal, p.A, p.mu, p.sigma, p.gamma, p.eta))
-    );
+    finalAllDPeakParams.forEach(p => {
+        if (p) { 
+            const subPeakY = fullXRange.map(xVal => pseudoVoigt(xVal, p.A, p.mu, p.sigma, p.gamma, p.eta));
+            fittedCurvesOut.push({
+                x: [...fullXRange],
+                y: subPeakY,
+                label: p.label || `${p.type} (Fit)`,
+                type: `d-subpeak-${p.type}`
+            });
+        }
+    });
 
-    allDPeakParams.forEach((p, i) => {
+    if (finalAllDPeakParams.length > 0) {
+        const compositeDCurveY = fullXRange.map(x_val => calculateSumOfPseudoVoigts(x_val, finalAllDPeakParams));
         fittedCurvesOut.push({
-            x: [...fullXRange], // Use a copy
-            y: dSubPeakCurvesY[i],
-            label: p.label || `D${i+1} (Fit)`,
-            type: `d-subpeak-${i+1}`
+            x: [...fullXRange],
+            y: compositeDCurveY,
+            label: "D-Complex (Sum)",
+            type: "composite-d"
         });
-    });
+    }
 
-    // Composite D-Curve (Sum of D1-D5)
-    const compositeDCurveY = fullXRange.map((x_val, i_x) =>
-        dSubPeakCurvesY.reduce((sum, individual_d_curve_y_array) => sum + individual_d_curve_y_array[i_x], 0)
-    );
-    fittedCurvesOut.push({
-        x: [...fullXRange], // Use a copy
-        y: compositeDCurveY,
-        label: "D-Complex (Sum)",
-        type: "composite-d"
-    });
+    if (gFinalParams) {
+        const gCurveY = fullXRange.map(xVal => pseudoVoigt(xVal, gFinalParams.A, gFinalParams.mu, gFinalParams.sigma, gFinalParams.gamma, gFinalParams.eta));
+        fittedCurvesOut.push({
+            x: [...fullXRange],
+            y: gCurveY,
+            label: gFinalParams.label || "G-Peak (Fit)",
+            type: "g-peak"
+        });
+    }
 
-    // G-Peak Curve
-    const gCurveY = fullXRange.map(xVal => pseudoVoigt(xVal, gParams.A, gParams.mu, gParams.sigma, gParams.gamma, gParams.eta));
-    fittedCurvesOut.push({
-        x: [...fullXRange], // Use a copy
-        y: gCurveY,
-        label: gParams.label || "G-Peak (Fit)",
-        type: "g-peak"
-    });
-
-    // Prepare D1 and G peaks for the summary table (topPeaks)
     const dBandWidthHeightPercentage = parseFloat(document.getElementById("dBandWidthHeight")?.value || 50) / 100;
     const gBandWidthHeightPercentage = parseFloat(document.getElementById("gBandWidthHeight")?.value || 50) / 100;
+    
+    let d1PeakForTable = { wavelength: null, intensity: null, height: null, width: null }; 
+    if (d1FinalParams) {
+        const d1_FWHM_approx = approximateVoigtFWHM(d1FinalParams.sigma, d1FinalParams.gamma, d1FinalParams.eta);
+        d1PeakForTable = {
+            wavelength: d1FinalParams.mu,
+            intensity: d1FinalParams.A,
+            height: d1FinalParams.A,
+            width: d1_FWHM_approx,
+            widthLeftX: d1FinalParams.mu - d1_FWHM_approx / 2,
+            widthRightX: d1FinalParams.mu + d1_FWHM_approx / 2,
+            widthHeight: d1FinalParams.A * dBandWidthHeightPercentage,
+            isD1: true
+        };
+    }
 
-    const d1_FWHM_approx = approximateVoigtFWHM(d1Params.sigma, d1Params.gamma, d1Params.eta);
-    const g_FWHM_approx  = approximateVoigtFWHM(gParams.sigma, gParams.gamma, gParams.eta);
-
-    const d1PeakForTable = {
-        wavelength: d1Params.mu,
-        intensity: d1Params.A,
-        height: d1Params.A,
-        width: d1_FWHM_approx,
-        widthLeftX: d1Params.mu - d1_FWHM_approx / 2,
-        widthRightX: d1Params.mu + d1_FWHM_approx / 2,
-        widthHeight: d1Params.A * dBandWidthHeightPercentage,
-        isD1: true
-    };
-
-    const gPeakForTable = {
-        wavelength: gParams.mu,
-        intensity: gParams.A,
-        height: gParams.A,
-        width: g_FWHM_approx,
-        widthLeftX: gParams.mu - g_FWHM_approx / 2,
-        widthRightX: gParams.mu + g_FWHM_approx / 2,
-        widthHeight: gParams.A * gBandWidthHeightPercentage
-    };
+    let gPeakForTable = { wavelength: null, intensity: null, height: null, width: null }; 
+    if (gFinalParams) {
+        const g_FWHM_approx  = approximateVoigtFWHM(gFinalParams.sigma, gFinalParams.gamma, gFinalParams.eta);
+        gPeakForTable = {
+            wavelength: gFinalParams.mu,
+            intensity: gFinalParams.A,
+            height: gFinalParams.A,
+            width: g_FWHM_approx,
+            widthLeftX: gFinalParams.mu - g_FWHM_approx / 2,
+            widthRightX: gFinalParams.mu + g_FWHM_approx / 2,
+            widthHeight: gFinalParams.A * gBandWidthHeightPercentage
+        };
+    }
 
     return {
         d1Peak: d1PeakForTable,

@@ -10,7 +10,7 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 - **Experimental Data Tab**
   - Upload multiple spectrum files with known firing temperatures
   - Navigate through files using dropdown or quick navigation buttons (<<, >>)
-  - Detect D and G peaks using two methods: Simple (moving average) and Voigt + Savitzky-Golay
+  - Detect D and G peaks using three methods: Simple (moving average), Voigt + Savitzky-Golay, and Voigt (5D)
   - Calculate key parameters: HD/HG, D Width, G Width, WD/WG
   - Plot calibration curves with individual data, averages, standard deviations, and trendlines
   - Compare Simple vs Voigt results with statistical significance testing
@@ -21,6 +21,7 @@ This web-based application is designed to analyze Raman spectroscopy data from c
   - Upload multiple spectra of samples with unknown firing temperature
   - Navigate through samples using dropdown or quick navigation buttons (<<, >>)
   - Apply the same analysis pipeline (method, intervals, height %) as the Experimental Tab for consistency (using `window.calibrationStats` generated from experimental data).
+  (This includes the Voigt (5D) method if selected on the Experimental tab.)
   - Click "Derive Temperatures" button to (re)calculate and display derived temperatures and update calibration plots.
   - Derive temperature ranges based on calibration curves from experimental data. The derived temperature table shows:
     - "Best estimate" temperatures: These are points where the archaeological sample's parameter value intersects the mean calibration curve. Each estimate is accompanied by a temperature uncertainty (ΔT), calculated from the local slope of the calibration curve and the parameter's standard deviation at that point. If a segment of the calibration curve is flat, the temperature may be reported as "Uncertain" or with a very high ΔT.
@@ -55,7 +56,7 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 
 ### ⚙️ Custom Controls
 - User-selectable peak intervals and search width height (% of peak)
-- Drop-down to select method (Simple or Voigt)
+- Drop-down to select method (Simple, Voigt, or Voigt (5D))
 - Mode selection (Broad/Conventional) with synchronized controls across tabs
 - Quick file navigation with previous/next buttons
 - Sample inclusion/exclusion controls for statistical analysis
@@ -93,6 +94,13 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 - Automatic valley detection between peaks for defining Voigt fitting intervals.
 - Temperature extraction from filenames
 - Pseudo-Voigt function fitting for peak analysis, with width calculation at user-defined % height (from experimental tab settings) to determine the reported width.
+- **Voigt (5D) Method:**
+  - Deconvolves the D-band into five pseudo-Voigt sub-peaks (D1-D5).
+  - Simultaneously fits the G-band with a single pseudo-Voigt profile.
+  - Employs an iterative gradient descent optimization to refine all peak parameters (Amplitude, Center, Sigma, Gamma, Eta).
+  - Utilizes strict parameter clamping for peak positions (`mu`), widths (`sigma`, `gamma`), amplitudes (`A`), and Lorentzian/Gaussian mixing ratio (`eta`) to ensure physically meaningful results and guide convergence.
+  - Calculates a composite "D-Complex (Sum)" curve from the sum of the D1-D5 sub-peaks for visual assessment of the overall D-band fit.
+  - Operates on Savitzky-Golay smoothed spectral data for improved fitting stability and robustness against noise.
 - Sophisticated interpolation and range-finding logic (`findTemperaturesForValue`, `findTemperatureRangesWithinSD`) to derive temperatures and their uncertainties/ranges from calibration curves, including handling of flat or near-flat segments.
 - Matrix operations for Savitzky-Golay coefficients
 - Linear interpolation for precise width measurements in some contexts.
