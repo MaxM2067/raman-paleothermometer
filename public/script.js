@@ -3,6 +3,7 @@ let displayedFileIndex = 0;
 let includedSamples = new Set(); // Track which samples are included in calculations
 let archaeologicalFiles = [];
 let selectedArchaeoIndex = 0;
+window.isVoigt5DTriggeredByButton = false; // Corrected global flag initialization
 
 // Add this flag at the top of your script
 let isLoadingState = false;
@@ -267,7 +268,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // Add event listener for the Update Peaks button
   document.getElementById("updateButton").addEventListener("click", () => {
     // updatePeak1Inputs(); // Not strictly needed here as it's for mode changes mostly
-    updateDisplayedFile();
+    const analysisMethodValue = document.getElementById("analysisMethod").value;
+    if (analysisMethodValue === "voigt5d") {
+      window.isVoigt5DTriggeredByButton = true;
+      updateDisplayedFile();
+      window.isVoigt5DTriggeredByButton = false;
+    } else {
+      updateDisplayedFile();
+    }
     saveAppState();
   });
 
@@ -292,7 +300,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const archUpdateBtn = document.getElementById("archaeoUpdateButton");
   if (archUpdateBtn) {
     archUpdateBtn.addEventListener("click", () => {
-      updateArchaeoPlot();
+      const analysisMethodValue = document.getElementById("analysisMethod").value;
+      if (analysisMethodValue === "voigt5d") {
+        window.isVoigt5DTriggeredByButton = true;
+        updateArchaeoPlot();
+        window.isVoigt5DTriggeredByButton = false;
+      } else {
+        updateArchaeoPlot();
+      }
+      saveAppState(); // Added saveAppState for consistency
     });
   }
 });
@@ -414,8 +430,11 @@ function updateDisplayedFile() {
     updatePlot(allFilesData[displayedFileIndex].spectrumData);
   }
 
-  // Always update archaeological tab's calibration charts
-  updateArchaeoPlot();
+  // Only update the archaeological plot if its tab is currently visible
+  if (document.getElementById("archaeologicalSection").style.display !== "none") {
+    updateArchaeoPlot();
+  }
+  // saveAppState(); // saveAppState is often called by the calling context or by updatePlot/updateArchaeoPlot directly if needed
 }
 
 document.getElementById("archaeoFileInput").addEventListener("change", (e) => {
@@ -499,20 +518,18 @@ function updateArchaeoPlot() {
   const gBandWidthHeight = parseFloat(document.getElementById("gBandWidthHeight").value);
   const widthPercentages = [dBandWidthHeight / 100, gBandWidthHeight / 100];
 
-  // Calculate division point for broad intervals
-  const divisionPoint = getDivisionPoint(
+  // Use broad intervals only for Voigt, otherwise use user intervals
+  let plotIntervals; // This definition of plotIntervals is for the main archaeo plot
+  const divisionPointForDisplayPlot = getDivisionPoint( // Calculate division point for the display plot
     spectrumData.wavelengths,
     spectrumData.intensities,
     intervals,
     method
   );
-
-  // Use broad intervals only for Voigt, otherwise use user intervals
-  let plotIntervals;
-  if (method === "voigt") {
+  if (method === "voigt" || method === "voigt5d") { // Modified to include voigt5d
     plotIntervals = [
-      { start: 1150, end: divisionPoint },
-      { start: divisionPoint, end: 1700 }
+      { start: 1150, end: divisionPointForDisplayPlot }, // Use specific division point
+      { start: divisionPointForDisplayPlot, end: 1700 }
     ];
   } else {
     plotIntervals = intervals;
@@ -520,14 +537,21 @@ function updateArchaeoPlot() {
 
   // This is for the main archaeo plot display
   console.log(`DEBUG_UPDATEARCHAEOPLOT: UI method just before main findTopPeaks call: ${method}`);
-  const { topPeaks: displayTopPeaks, fittedCurves: displayFittedCurves } = findTopPeaks(
-    spectrumData.wavelengths,
-    spectrumData.intensities,
-    plotIntervals,
-    widthPercentages,
-    method,
-    "archaeoSpectrumChart"
-  );
+  const { topPeaks: displayTopPeaks, fittedCurves: displayFittedCurves } = (() => {
+    if (method === "voigt5d" && !window.isVoigt5DTriggeredByButton) {
+      console.log("Voigt (5D) selected for Archaeo, but button not pressed. Skipping main plot calculation.");
+      return { topPeaks: [], fittedCurves: [] };
+    }
+    // 'plotIntervals' is already correctly defined above for the display plot based on 'method'
+    return findTopPeaks(
+      spectrumData.wavelengths,
+      spectrumData.intensities,
+      plotIntervals, // Use the plotIntervals defined for the display plot
+      widthPercentages,
+      method,
+      "archaeoSpectrumChart"
+    );
+  })();
 
   // Create the main spectrum chart
   const ctx = document.getElementById("archaeoSpectrumChart").getContext("2d");
@@ -550,14 +574,36 @@ function updateArchaeoPlot() {
     archaeologicalFiles.map(fileData => {
       // This findTopPeaks is for deriving parameters for the table.
       // It should use the UI selected method.
-      const { topPeaks: derivedTopPeaks } = findTopPeaks(
-        fileData.spectrumData.wavelengths,
-        fileData.spectrumData.intensities,
-        plotIntervals, 
-        widthPercentages,
-        method, // UI selected method
-        "archaeoSpectrumChart_derivedTemp" // Different context
-      );
+      const { topPeaks: derivedTopPeaks } = (() => {
+        if (method === "voigt5d" && !window.isVoigt5DTriggeredByButton) {
+          return { topPeaks: [{}, {}] }; // Return placeholder to avoid errors
+        }
+        // Ensure plotIntervals for derivation are correctly defined based on 'method'
+        // It might need its own divisionPoint calculation if fileData is different from main display
+        const divisionPointForDerivation = getDivisionPoint(
+            fileData.spectrumData.wavelengths,
+            fileData.spectrumData.intensities,
+            intervals, // UI intervals
+            method
+        );
+        let intervalsForDerivation;
+        if (method === "voigt" || method === "voigt5d") {
+            intervalsForDerivation = [
+                { start: 1150, end: divisionPointForDerivation },
+                { start: divisionPointForDerivation, end: 1700 }
+            ];
+        } else {
+            intervalsForDerivation = intervals;
+        }
+        return findTopPeaks(
+          fileData.spectrumData.wavelengths,
+          fileData.spectrumData.intensities,
+          intervalsForDerivation, // Use intervals specific to this derivation context
+          widthPercentages,
+          method, // UI selected method
+          "archaeoSpectrumChart_derivedTemp" // Different context
+        );
+      })();
 
       const d = derivedTopPeaks[0] || {}; // Use renamed
       const g = derivedTopPeaks[1] || {}; // Use renamed
@@ -590,19 +636,29 @@ function updateArchaeoPlot() {
     };
 
     // Get the currently selected analysis method from the UI
-    const currentMethodForDisplay = document.getElementById("analysisMethod").value;
+    const currentMethodForDisplay = document.getElementById("analysisMethod").value; // This is 'method' from earlier, can reuse
 
     allFilesData.forEach((fileData) => {
       const methodsToFullyProcess = ["simple", "voigt"];
-      if (currentMethodForDisplay === "voigt5d") {
+      // 'currentMethodForDisplay' (which is 'method' in this function) is the key here
+      if (method === "voigt5d") { 
           methodsToFullyProcess.push("voigt5d");
       }
 
       ["simple", "voigt", "voigt5d"].forEach((methodName) => {
         const callContextId = methodName + "_stats_context"; // Create a distinct context ID
 
-        if (methodsToFullyProcess.includes(methodName)) {
-          const divisionPoint = getDivisionPoint(
+        let shouldFullyProcessThisStat;
+        if (methodName === "voigt5d") {
+          // For Voigt (5D) stats, only process if it's the current method AND button was pressed
+          shouldFullyProcessThisStat = (currentMethodForDisplay === "voigt5d" && window.isVoigt5DTriggeredByButton);
+        } else {
+          // For simple and voigt, process them (they are always in methodsToFullyProcess if they are the current method or implicitly needed)
+          shouldFullyProcessThisStat = methodsToFullyProcess.includes(methodName); // This remains as is, simple/voigt run if in the list
+        }
+
+        if (shouldFullyProcessThisStat) {
+          const divisionPointForStatsLoop = getDivisionPoint( // Renamed to avoid conflict
             fileData.spectrumData.wavelengths,
             fileData.spectrumData.intensities,
             intervals, // These are UI intervals
@@ -612,8 +668,8 @@ function updateArchaeoPlot() {
           let plotIntervalsForStats;
           if (methodName === "voigt" || methodName === "voigt5d") {
             plotIntervalsForStats = [
-              { start: 1150, end: divisionPoint },
-              { start: divisionPoint, end: 1700 }
+              { start: 1150, end: divisionPointForStatsLoop }, // Use renamed divisionPoint
+              { start: divisionPointForStatsLoop, end: 1700 }  // Use renamed divisionPoint
             ];
           } else {
             plotIntervalsForStats = intervals; // Use UI intervals for simple
@@ -692,7 +748,7 @@ function updateArchaeoPlot() {
       plotIntervalsForDisplay, // Use display-specific intervals
       widthPercentages,
       currentMethodForDisplay, // Use the method selected in the UI
-      "spectrumChart"
+      "archaeoSpectrumChart" // Changed from "spectrumChart"
     );
 
     // Generate calibration charts using Voigt method data
@@ -969,6 +1025,9 @@ function updatePlot(spectrumData) {
     voigt5d: [], // Add new method here
   };
 
+  let cachedTopPeaksForCurrentSpectrum = null;
+  let cachedFittedCurvesForCurrentSpectrum = null;
+
   allFilesData.forEach((fileData) => {
     const methodsToFullyProcess = ["simple", "voigt"];
     if (currentMethodForDisplay === "voigt5d") {
@@ -978,7 +1037,16 @@ function updatePlot(spectrumData) {
     ["simple", "voigt", "voigt5d"].forEach((methodName) => {
       const callContextId = methodName + "_stats_context"; // Create a distinct context ID
 
-      if (methodsToFullyProcess.includes(methodName)) {
+      let shouldFullyProcessThisStat;
+      if (methodName === "voigt5d") {
+        // For Voigt (5D) stats, only process if it's the current method AND button was pressed
+        shouldFullyProcessThisStat = (currentMethodForDisplay === "voigt5d" && window.isVoigt5DTriggeredByButton);
+      } else {
+        // For simple and voigt, process them (they are always in methodsToFullyProcess if they are the current method or implicitly needed)
+        shouldFullyProcessThisStat = methodsToFullyProcess.includes(methodName); // This remains as is, simple/voigt run if in the list
+      }
+
+      if (shouldFullyProcessThisStat) {
         const divisionPoint = getDivisionPoint(
           fileData.spectrumData.wavelengths,
           fileData.spectrumData.intensities,
@@ -996,7 +1064,7 @@ function updatePlot(spectrumData) {
           plotIntervalsForStats = intervals; // Use UI intervals for simple
         }
 
-        const { topPeaks } = findTopPeaks(
+        const { topPeaks, fittedCurves } = findTopPeaks(
           fileData.spectrumData.wavelengths,
           fileData.spectrumData.intensities,
           plotIntervalsForStats,
@@ -1004,6 +1072,12 @@ function updatePlot(spectrumData) {
           methodName,
           callContextId // Pass distinct context ID
         );
+
+        // Cache results if it's the current spectrum and current method
+        if (fileData.spectrumData === spectrumData && methodName === currentMethodForDisplay) {
+          cachedTopPeaksForCurrentSpectrum = topPeaks;
+          cachedFittedCurvesForCurrentSpectrum = fittedCurves;
+        }
 
         const d = topPeaks[0] || {};
         const g = topPeaks[1] || {};
@@ -1058,14 +1132,28 @@ function updatePlot(spectrumData) {
     plotIntervals = intervals;
   }
 
-  const { topPeaks, fittedCurves } = findTopPeaks(
-    spectrumData.wavelengths,
-    spectrumData.intensities,
-    plotIntervals,
-    widthPercentages,
-    currentMethodForDisplay,
-    "spectrumChart"
-  );
+  let topPeaks, fittedCurves; // Declare variables
+  if (cachedTopPeaksForCurrentSpectrum && cachedFittedCurvesForCurrentSpectrum && currentMethodForDisplay !== "simple") {
+    // Use cached results if available
+    console.log("DEBUG_UPDATEPLOT: Using cached Voigt/Voigt5D results for main spectrumChart plot.");
+    topPeaks = cachedTopPeaksForCurrentSpectrum;
+    fittedCurves = cachedFittedCurvesForCurrentSpectrum;
+  } else {
+    // Otherwise, calculate fresh 
+    console.log("DEBUG_UPDATEPLOT: Calculating fresh results for main spectrumChart plot. (ELSE BLOCK ENTERED)"); 
+    const analysisResult = findTopPeaks(  // Restoring this call
+      spectrumData.wavelengths,
+      spectrumData.intensities,
+      plotIntervals,
+      widthPercentages,
+      currentMethodForDisplay,
+      "spectrumChart"
+    );
+    topPeaks = analysisResult.topPeaks; // Restoring this assignment
+    fittedCurves = analysisResult.fittedCurves; // Restoring this assignment
+    // console.log("DEBUG_UPDATEPLOT: findTopPeaks for spectrumChart in ELSE block was COMMENTED OUT."); // Removing this debug log
+  }
+
   plotSpectrum(
     spectrumData,
     topPeaks,
@@ -1124,6 +1212,12 @@ function plotSpectrum(
 
   const showSmoothing = document.getElementById(canvasId === "archaeoSpectrumChart" ? "archaeoShowSmoothing" : "showSmoothing")?.checked ?? true;
   const showFitting = document.getElementById(canvasId === "archaeoSpectrumChart" ? "archaeoShowFitting" : "showFitting")?.checked ?? true;
+
+  let effectiveTopPeaks = topPeaks;
+  if (method === "voigt5d" && !window.isVoigt5DTriggeredByButton && canvasId === "spectrumChart") {
+    console.log("plotSpectrum (Experimental): Voigt (5D) selected, button not pressed. Clearing topPeaks for annotation purposes.");
+    effectiveTopPeaks = [];
+  }
 
   const datasets = [
     {
@@ -1229,7 +1323,8 @@ function plotSpectrum(
     },
   };
 
-  topPeaks.forEach((peak, index) => {
+  // Use effectiveTopPeaks for drawing annotations
+  effectiveTopPeaks.forEach((peak, index) => {
     annotations[`peakLine${index}`] = {
       type: "line",
       xMin: peak.wavelength,
@@ -1810,52 +1905,8 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
     const wdWg = file.wdWg != null ? file.wdWg.toFixed(2) : "N/A";
     const isChecked = includedSamples.has(file.name);
 
-    // Find the corresponding file data from allFilesData
-    const fileData = allFilesData.find(f => f.name === file.name);
-    if (!fileData) return;
-
-    // Get the user intervals
-    const intervals = [
-      {
-        start: parseFloat(document.getElementById("peak1Start").value),
-        end: parseFloat(document.getElementById("peak1End").value),
-      },
-      {
-        start: parseFloat(document.getElementById("peak2Start").value),
-        end: parseFloat(document.getElementById("peak2End").value),
-      },
-    ];
-
-    // Calculate division point
-    const divisionPoint = getDivisionPoint(
-      fileData.spectrumData.wavelengths,
-      fileData.spectrumData.intensities,
-      intervals,
-      method
-    );
-
-    // Use broad intervals for Voigt, user intervals for Simple
-    let plotIntervals;
-    if (method === "voigt") {
-      plotIntervals = [
-        { start: 1150, end: divisionPoint },
-        { start: divisionPoint, end: 1700 }
-      ];
-    } else {
-      plotIntervals = intervals;
-    }
-
-    // Get peak wavelengths from the topPeaks array using the same intervals as the plot
-    const { topPeaks } = findTopPeaks(
-      fileData.spectrumData.wavelengths,
-      fileData.spectrumData.intensities,
-      plotIntervals,
-      [dBandWidthHeight / 100, gBandWidthHeight / 100],
-      method
-    );
-
-    const dPeakWavelength = topPeaks[0] ? parseFloat(topPeaks[0].wavelength).toFixed(0) : "N/A";
-    const gPeakWavelength = topPeaks[1] ? parseFloat(topPeaks[1].wavelength).toFixed(0) : "N/A";
+    const dPeakWavelength = file.dPeakWavelength != null ? parseFloat(file.dPeakWavelength).toFixed(0) : "N/A";
+    const gPeakWavelength = file.gPeakWavelength != null ? parseFloat(file.gPeakWavelength).toFixed(0) : "N/A";
 
     // Set individual checkbox state here
     tbodyElement.innerHTML += `
@@ -2745,31 +2796,49 @@ function generateCalibrationCharts(data, method) {
               { start: parseFloat(document.getElementById("peak1Start").value), end: parseFloat(document.getElementById("peak1End").value) },
               { start: parseFloat(document.getElementById("peak2Start").value), end: parseFloat(document.getElementById("peak2End").value) },
             ];
-            const divisionPointVal = getDivisionPoint(
-              fileData.spectrumData.wavelengths,
-              fileData.spectrumData.intensities,
-              currentIntervals,
-              currentAnalysisMethod
-            );
-            let currentPlotIntervals;
-            if (currentAnalysisMethod === "voigt") {
-              currentPlotIntervals = [
-                { start: 1150, end: divisionPointVal },
-                { start: divisionPointVal, end: 1700 }
-              ];
+            
+            let d_peak = {};
+            let g_peak = {};
+
+            if (currentAnalysisMethod === "voigt5d") {
+              // For Voigt (5D) overlay, use pre-calculated and stored peaks if available
+              if (fileData.derivedD1Peak && fileData.derivedGPeak) {
+                d_peak = fileData.derivedD1Peak;
+                g_peak = fileData.derivedGPeak;
+                console.log(`generateCalibrationCharts: Using stored D1/G for Voigt (5D) overlay for '${name}'.`);
+              } else {
+                // If Voigt (5D) is selected but button not pressed OR peaks not stored, don't attempt to find peaks for overlay.
+                // archValue will remain null, and the point won't be meaningfully plotted or will be out of range.
+                console.log(`generateCalibrationCharts: Voigt (5D) selected for '${name}', but derived peaks not available or button not pressed. Skipping findTopPeaks for overlay.`);
+              }
             } else {
-              currentPlotIntervals = currentIntervals;
+              // For Simple or Voigt (non-5D), proceed with existing findTopPeaks (which is faster)
+              const divisionPointVal = getDivisionPoint(
+                fileData.spectrumData.wavelengths,
+                fileData.spectrumData.intensities,
+                currentIntervals,
+                currentAnalysisMethod
+              );
+              let currentPlotIntervals;
+              if (currentAnalysisMethod === "voigt" || currentAnalysisMethod === "voigt5d") { // Include voigt5d here
+                currentPlotIntervals = [
+                  { start: 1150, end: divisionPointVal },
+                  { start: divisionPointVal, end: 1700 }
+                ];
+              } else {
+                currentPlotIntervals = currentIntervals;
+              }
+              const { topPeaks } = findTopPeaks(
+                fileData.spectrumData.wavelengths,
+                fileData.spectrumData.intensities,
+                currentPlotIntervals,
+                currentWidthPercentages,
+                currentAnalysisMethod,
+                "archaeoSpectrumChart_overlay" // Distinct context for this findTopPeaks call
+              );
+              d_peak = topPeaks[0] || {};
+              g_peak = topPeaks[1] || {};
             }
-            const { topPeaks } = findTopPeaks(
-              fileData.spectrumData.wavelengths,
-              fileData.spectrumData.intensities,
-              currentPlotIntervals,
-              currentWidthPercentages,
-              currentAnalysisMethod,
-              "archaeoSpectrumChart" // context for findTopPeaks if it uses canvasId internally
-            );
-            const d_peak = topPeaks[0] || {};
-            const g_peak = topPeaks[1] || {};
             
             if (param === 'hdHg') archValue = d_peak.height && g_peak.height && g_peak.height !== 0 ? d_peak.height / g_peak.height : null;
             else if (param === 'dWidth') archValue = d_peak.width || null;
@@ -3268,6 +3337,15 @@ function calculateSumOfPseudoVoigts(x, peakParamsArray) {
 // STUB function for Voigt (5D) fitting.
 // REPLACE THE BODY WITH ACTUAL FITTING LOGIC LATER.
 function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, yDataG_input, canvasIdBase = "spectrumChart_voigt5d_stub") {
+    if (!window.isVoigt5DTriggeredByButton) {
+        console.warn(`fitDComplexAndGPeak_Voigt5D (${canvasIdBase}) called without button press. Aborting Voigt (5D) fit.`);
+        // Return a structure that matches what the calling function expects, but with empty/default data.
+        return {
+            d1Peak: { wavelength: null, intensity: null, height: null, width: null, isD1: true },
+            gPeak: { wavelength: null, intensity: null, height: null, width: null },
+            fittedCurves: []
+        };
+    }
     console.log("Executing STUB fitDComplexAndGPeak_Voigt5D with D-data length:", xDataD_input.length, "G-data length:", xDataG_input.length);
 
     // --- Initial Parameter Estimation for all peaks --- 
@@ -3382,7 +3460,7 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
     // --- End of Objective Function ---
 
     // --- Modified Placeholder for Optimization Loop ---
-    const optimizationIterations = 100; 
+    const optimizationIterations = 1; 
     console.log(`Starting Voigt (5D) fitting process for ${canvasIdBase} with ${optimizationIterations} iterations.`);
 
     const learningRateGradientDescent = 35e-5; 
