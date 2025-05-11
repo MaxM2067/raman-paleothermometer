@@ -10,19 +10,22 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 - **Experimental Data Tab**
   - Upload multiple spectrum files with known firing temperatures
   - Navigate through files using dropdown or quick navigation buttons (<<, >>)
-  - Detect D and G peaks using three methods: Simple (moving average), Voigt + Savitzky-Golay, and Voigt (5D)
+  - Detect D and G peaks using three methods: Simple (moving average), Voigt + Savitzky-Golay, and Voigt (5D).
+    - The Voigt (5D) method's full fitting and detailed statistical calculations are explicitly triggered by a "Derive D/G parameters (Voigt 5D)" button press.
   - Calculate key parameters: HD/HG, D Width, G Width, WD/WG
   - Plot calibration curves with individual data, averages, standard deviations, and trendlines
   - Compare Simple vs Voigt results with statistical significance testing
   - Selectively include/exclude samples using checkboxes
   - Toggle visibility of smoothing and fitting curves
+  - Performance optimization: Voigt/Voigt5D analysis results for the currently displayed spectrum are cached to avoid redundant calculations when interactions don't change the underlying data.
 
 - **Archaeological Samples Tab**
   - Upload multiple spectra of samples with unknown firing temperature
   - Navigate through samples using dropdown or quick navigation buttons (<<, >>)
   - Apply the same analysis pipeline (method, intervals, height %) as the Experimental Tab for consistency (using `window.calibrationStats` generated from experimental data).
-  (This includes the Voigt (5D) method if selected on the Experimental tab.)
+    - For the Voigt (5D) method, analysis consistency also depends on the "Derive D/G parameters (Voigt 5D)" button having been previously pressed on the Experimental tab (state carried via `window.isVoigt5DTriggeredByButton`).
   - Click "Derive Temperatures" button to (re)calculate and display derived temperatures and update calibration plots.
+  - The processing of archaeological samples (via `updateArchaeoPlot`) is only performed if this tab is currently active, enhancing performance when working on the Experimental tab.
   - Derive temperature ranges based on calibration curves from experimental data. The derived temperature table shows:
     - "Best estimate" temperatures: These are points where the archaeological sample's parameter value intersects the mean calibration curve. Each estimate is accompanied by a temperature uncertainty (ΔT), calculated from the local slope of the calibration curve and the parameter's standard deviation at that point. If a segment of the calibration curve is flat, the temperature may be reported as "Uncertain" or with a very high ΔT.
     - "Possible range" temperatures: These are temperature intervals where the archaeological sample's parameter value falls within the mean ± standard deviation band of the calibration curve. These ranges are processed to merge overlapping sections and round to sensible values.
@@ -43,7 +46,7 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 - Full spectrum plot with:
   - Detected peak centers
   - Width lines at user-defined % height
-  - Voigt fitted curves when applicable
+  - Voigt fitted curves when applicable (including individual components and total sum for Voigt (5D))
   - Savitzky-Golay smoothing overlay
 - Independent charts for each tab
 - Chart.js based visualizations with hover tooltips and interactive legends
@@ -78,6 +81,23 @@ This web-based application is designed to analyze Raman spectroscopy data from c
   - WD/WG Ratio
 - Method comparison charts showing both Simple and Voigt results
 - Detailed statistical tables with temperature-wise breakdowns
+- Peak detection with multiple algorithms
+- Width calculation at user-defined heights (for Simple method and as a target for Voigt fitting).
+- Automatic valley detection between peaks for defining Voigt fitting intervals.
+- Temperature extraction from filenames
+- Pseudo-Voigt function fitting for peak analysis, with width calculation at user-defined % height (from experimental tab settings) to determine the reported width.
+- **Voigt (5D) Method:**
+  - Execution of the full `fitDComplexAndGPeak_Voigt5D` fitting process, and subsequent detailed statistical calculations for all files (in `updatePlot` and `updateArchaeoPlot`), is gated by the "Derive D/G parameters (Voigt 5D)" button press (controlled by `window.isVoigt5DTriggeredByButton`). If this button has not been pressed for the current session, simpler Voigt results or placeholders may be used.
+  - Deconvolves the D-band and G-band regions using a total of six pseudo-Voigt components (D1, D2, D3, D4, D5, and G).
+  - The error calculation for the fitting process is holistic: the sum of all six components is compared against smoothed experimental data in both the D-band and G-band regions.
+  - Employs an iterative gradient descent optimization to refine all peak parameters (Amplitude, Center, Sigma, Gamma, Eta) for all six components simultaneously.
+  - The optimization process tracks and ultimately uses the set of parameters that achieved the lowest overall fitting error across all iterations.
+  - Utilizes refined initial parameters and strict parameter clamping for peak positions (`mu`), widths (`sigma`, `gamma`), amplitudes (`A`), and Lorentzian/Gaussian mixing ratio (`eta`) for all components.
+  - Operates on Savitzky-Golay smoothed spectral data for improved fitting stability.
+  - The `findTopPeaks` function, when using the Voigt (5D) method and after the button trigger, calls `fitDComplexAndGPeak_Voigt5D`. It returns key parameters for the primary D-peak (approximated by D1) and G-peak for tabular display and calculations, along with *all* `fittedCurves` (individual D1-D5, G, and the total sum of these components) for detailed plotting.
+  - Calculates and displays a "Total Fit (Sum)" curve (typically bold red) representing the sum of all six fitted components (D1-D5 + G).
+  - Individual component curves for D1-D5 and the G peak are also plotted (typically as thinner lines of various colors).
+- Sophisticated interpolation and range-finding logic (`findTemperaturesForValue`, `findTemperatureRangesWithinSD`) to derive temperatures and their uncertainties/ranges from calibration curves.
 
 ### 🔄 Synchronization Features
 - Synchronized method selection between tabs (Experimental tab controls Archaeological tab calculations).
@@ -144,3 +164,8 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 - Automatic peak detection and fitting with configurable parameters
 - Statistical analysis with significance testing
 - Interactive data visualization with error bars
+- **Performance Optimizations:**
+  - Caching of Voigt/Voigt5D analysis results in `updatePlot` for the main experimental spectrum display to avoid redundant computations.
+  - Conditional execution of `updateArchaeoPlot` (processing archaeological samples) only when its tab is visible.
+  - Removal of redundant `findTopPeaks` call within `displayPeakInfo`; peak parameters are now sourced directly from pre-calculated results.
+

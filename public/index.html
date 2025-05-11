@@ -43,168 +43,194 @@
 
     <!-- === EXPERIMENTAL DATA TAB (your original interface) === -->
     <div id="experimentalSection">
-      <h1>Upload Spectrum Data</h1>
-      <input type="file" id="fileInput" accept=".txt" multiple />
-      <div style="display: flex; align-items: center; gap: 10px; margin: 10px 0;">
-        <label for="fileSelector">Select File to Display: </label>
-        <select id="fileSelector" onchange="updateDisplayedFile()"></select>
-        <button id="prevFile" class="navButton">&lt;&lt;</button>
-        <button id="nextFile" class="navButton">&gt;&gt;</button>
-      </div>
+      <div class="main-content">
+        <!-- Settings Panel -->
+        <div class="settings-block">
+          <!-- Upload Section -->
+          <h3 class="section-title">Upload Files (.txt)</h3>
+          <div class="upload-section">
+            <input type="file" id="fileInput" accept=".txt" multiple />
+            <div class="file-selector-row">
+              <select id="fileSelector" onchange="updateDisplayedFile()"></select>
+              <div class="nav-buttons">
+                <button id="prevFile" class="navButton">&lt;&lt;</button>
+                <button id="nextFile" class="navButton">&gt;&gt;</button>
+              </div>
+            </div>
+          </div>
 
-      <!-- Checkboxes for smoothing and fitting -->
-      <div style="margin-bottom: 10px; font-family: Arial, sans-serif;">
-        <label>
-          <input type="checkbox" id="showSmoothing" checked>
-          Show Smoothing (SG)
-        </label>
-        <label style="margin-left: 20px;">
-          <input type="checkbox" id="showFitting" checked>
-          Show Fitting Curve
-        </label>
-      </div>
-      <canvas id="spectrumChart"></canvas>
+          <!-- Settings Section -->
+          <h3 class="section-title">Settings</h3>
+          <div class="settings-row">
+            <label>
+              Analysis Method:
+              <select id="analysisMethod">
+                <option value="simple">Simple (No fitting)</option>
+                <option value="voigt" selected>Voigt + Savitzky-Golay</option>
+                <option value="voigt5d">Voigt (5D)</option>
+              </select>
+            </label>
 
-      <div
-        id="intervalInputs"
-        style="margin-top: 20px; font-family: Arial, sans-serif"
-      >
-        <div style="margin-bottom: 10px">
-          <label>
-            Analysis Method:
-            <select id="analysisMethod">
-              <option value="simple">Simple (Moving Average)</option>
-              <option value="voigt" selected>Voigt + Savitzky-Golay</option>
-              <option value="voigt5d">Voigt (5D)</option>
-            </select>
-          </label>
+            <label>
+              Mode:
+              <select id="peak1Mode">
+                <option value="broad" selected>Broad</option>
+                <option value="conventional">Conventional</option>
+              </select>
+            </label>
+          </div>
+
+          <table class="settings-table">
+            <thead>
+              <tr>
+                <th>Band</th>
+                <th>Start (cm⁻¹)</th>
+                <th>End (cm⁻¹)</th>
+                <th>Width %</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>D band</td>
+                <td>
+                  <input
+                    type="number"
+                    id="peak1Start"
+                    value="1300"
+                    class="settings-input"
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    id="peak1End"
+                    value="1400"
+                    class="settings-input"
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    id="dBandWidthHeight"
+                    value="80"
+                    min="0"
+                    max="100"
+                    step="1"
+                    class="settings-input-width"
+                  />%
+                </td>
+              </tr>
+              <tr>
+                <td>G band</td>
+                <td>
+                  <input
+                    type="number"
+                    id="peak2Start"
+                    value="1590"
+                    class="settings-input"
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    id="peak2End"
+                    value="1610"
+                    class="settings-input"
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    id="gBandWidthHeight"
+                    value="60"
+                    min="0"
+                    max="100"
+                    step="1"
+                    class="settings-input-width"
+                  />%
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="controls-row">
+            <button id="updateButton" class="update-button">
+              Update Peaks
+            </button>
+            <button id="restoreDefaultsButton" class="restore-button">
+              Restore Default Settings
+            </button>
+          </div>
         </div>
 
-        <h3 style="margin: 0 0 10px 0">Search Intervals for Peaks</h3>
-
-        <div style="margin-bottom: 10px">
-          <label>
-            Mode:
-            <select id="peak1Mode">
-              <option value="broad" selected>Broad</option>
-              <option value="conventional">Conventional</option>
-            </select>
-          </label>
+        <!-- Chart Area -->
+        <div class="chart-container">
+          <!-- Checkboxes for smoothing and fitting -->
+          <div style="margin-bottom: 10px; font-family: Arial, sans-serif;">
+            <label>
+              <input type="checkbox" id="showSmoothing" checked>
+              Show Smoothing (SG)
+            </label>
+            <label style="margin-left: 20px;">
+              <input type="checkbox" id="showFitting" checked>
+              Show Fitting Curve
+            </label>
+          </div>
+          <canvas id="spectrumChart"></canvas>
+          <div id="peakInfo" style="margin-top: 20px"></div>
+          <div id="methodComparisonResults" style="margin-top: 40px"></div>
         </div>
-
-        <table style="width: 100%; max-width: 600px; border-collapse: collapse; margin-bottom: 10px;">
-          <thead>
-            <tr style="background-color: #f2f2f2">
-              <th style="padding: 5px; text-align: center">Band</th>
-              <th style="padding: 5px; text-align: center">Start</th>
-              <th style="padding: 5px; text-align: center">End</th>
-              <th style="padding: 5px; text-align: center">Width %</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style="padding: 5px; text-align: center">D band</td>
-              <td style="padding: 5px; text-align: center">
-                <input
-                  type="number"
-                  id="peak1Start"
-                  value="1300"
-                  style="width: 80px"
-                />
-              </td>
-              <td style="padding: 5px; text-align: center">
-                <input
-                  type="number"
-                  id="peak1End"
-                  value="1400"
-                  style="width: 80px"
-                />
-              </td>
-              <td style="padding: 5px; text-align: center">
-                <input
-                  type="number"
-                  id="dBandWidthHeight"
-                  value="80"
-                  min="0"
-                  max="100"
-                  step="1"
-                  style="width: 60px"
-                />%
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 5px; text-align: center">G band</td>
-              <td style="padding: 5px; text-align: center">
-                <input
-                  type="number"
-                  id="peak2Start"
-                  value="1590"
-                  style="width: 80px"
-                />
-              </td>
-              <td style="padding: 5px; text-align: center">
-                <input
-                  type="number"
-                  id="peak2End"
-                  value="1610"
-                  style="width: 80px"
-                />
-              </td>
-              <td style="padding: 5px; text-align: center">
-                <input
-                  type="number"
-                  id="gBandWidthHeight"
-                  value="60"
-                  min="0"
-                  max="100"
-                  step="1"
-                  style="width: 60px"
-                />%
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <!-- Moved Update Button -->
-        <button id="updateButton" style="padding: 5px 20px">
-          Update Peaks
-        </button>
       </div>
-
-      <div id="peakInfo" style="margin-top: 20px"></div>
-      <div id="methodComparisonResults" style="margin-top: 40px"></div>
     </div>
 
     <!-- === ARCHAELOGICAL SAMPLES TAB (new) === -->
     <div id="archaeologicalSection" style="display: none">
-      <h1>Upload Archaeological Sample Data</h1>
-      <input type="file" id="archaeoFileInput" accept=".txt" multiple />
-      <div style="display: flex; align-items: center; gap: 10px; margin: 10px 0;">
-        <label for="archaeoFileSelector">Select Sample to Display: </label>
-        <select id="archaeoFileSelector"></select>
-        <button id="archaeoPrevFile" class="navButton">&lt;&lt;</button>
-        <button id="archaeoNextFile" class="navButton">&gt;&gt;</button>
-      </div>
+      <div class="main-content">
+        <!-- Settings Panel -->
+        <div class="settings-block">
+          <!-- Upload Section -->
+          <h3 class="section-title">Upload Files (.txt)</h3>
+          <div class="upload-section">
+            <input type="file" id="archaeoFileInput" accept=".txt" multiple />
+            <div class="file-selector-row">
+              <select id="archaeoFileSelector"></select>
+              <div class="nav-buttons">
+                <button id="archaeoPrevFile" class="navButton">&lt;&lt;</button>
+                <button id="archaeoNextFile" class="navButton">&gt;&gt;</button>
+              </div>
+            </div>
+          </div>
 
-      <!-- Add checkboxes for smoothing and fitting -->
-      <div style="margin-bottom: 10px; font-family: Arial, sans-serif;">
-        <label>
-          <input type="checkbox" id="archaeoShowSmoothing" checked>
-          Show Smoothing (SG)
-        </label>
-        <label style="margin-left: 20px;">
-          <input type="checkbox" id="archaeoShowFitting" checked>
-          Show Fitting Curve
-        </label>
-      </div>
-      <canvas id="archaeoSpectrumChart"></canvas>
+          <!-- Add Derive Temperatures button here -->
+          <div class="controls-row" style="margin-top: 15px;">
+            <button id="archaeoUpdateButton" class="update-button">
+              Derive Temperatures
+            </button>
+          </div>
+        </div>
 
-      <div id="derivedTemperatureTable" style="margin-top: 30px"></div>
-      <button id="archaeoUpdateButton" style="padding: 5px 20px; margin-bottom: 10px;">Derive Temperatures</button>
-      <div id="archaeoStats" style="margin-top: 40px"></div>
-      <div id="archaeoCalibrationCharts" style="margin-top: 40px; border-top: 1px solid #ccc; padding-top: 20px;">
-        <h3>Calibration Curves</h3>
-        <div id="archaeoCalibrationPlots"></div>
+        <!-- Chart Area -->
+        <div class="chart-container">
+          <!-- Checkboxes for smoothing and fitting -->
+          <div style="margin-bottom: 10px; font-family: Arial, sans-serif;">
+            <label>
+              <input type="checkbox" id="archaeoShowSmoothing" checked>
+              Show Smoothing (SG)
+            </label>
+            <label style="margin-left: 20px;">
+              <input type="checkbox" id="archaeoShowFitting" checked>
+              Show Fitting Curve
+            </label>
+          </div>
+          <canvas id="archaeoSpectrumChart"></canvas>
+          
+          <div id="derivedTemperatureTable" style="margin-top: 30px"></div>
+          <div id="archaeoStats" style="margin-top: 40px"></div>
+          <div id="archaeoCalibrationCharts" style="margin-top: 40px; border-top: 1px solid #ccc; padding-top: 20px;">
+            <h3>Calibration Curves</h3>
+            <div id="archaeoCalibrationPlots"></div>
+          </div>
+        </div>
       </div>
     </div>
 

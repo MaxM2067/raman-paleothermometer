@@ -128,33 +128,53 @@ function loadAppState() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  loadAppState(); // Load state first thing
+  loadAppState(); // Load state first thing. This populates UI elements if state exists.
 
-  updatePeak1Inputs(); // This will now use loaded values if present
+  // If after loading, critical inputs are still empty (e.g. first visit or cleared session storage)
+  // then apply initial default UI settings and save them.
+  const peak1StartInput = document.getElementById("peak1Start");
+  if (!peak1StartInput.value) {
+      console.log("No saved state for peak1Start, applying initial defaults to UI.");
+      // Ensure method and mode dropdowns have a basic value if not set by loadAppState,
+      // before calling updatePeak1Inputs which reads them.
+      const analysisMethodInput = document.getElementById("analysisMethod");
+      if (!analysisMethodInput.value) analysisMethodInput.value = "simple"; // Default to simple
+      const peak1ModeInput = document.getElementById("peak1Mode");
+      if (!peak1ModeInput.value) peak1ModeInput.value = "broad"; // Default to broad
 
-  // Add event listeners for method and mode selectors in both tabs
+      updatePeak1Inputs(); // This function now ONLY sets UI default values based on current method/mode
+      saveAppState();      // Save these initial defaults.
+  }
+
+  // Initial plot update using values now in the UI (either from storage or initial defaults)
+  // Ensures a plot is shown on first load or refresh.
+  if (allFilesData.length > 0) {
+      updateDisplayedFile();
+  }
+  // The direct call to updatePeak1Inputs() that was previously here (before it was parameterized) is removed.
+
+  // Event listener for the NEW "Restore Default Settings" button
+  // User needs to add <button id="restoreDefaultsButton">Restore Default Settings</button> to HTML
+  const restoreBtn = document.getElementById("restoreDefaultsButton");
+  if (restoreBtn) {
+      restoreBtn.addEventListener("click", () => {
+          console.log("Restore Defaults button clicked.");
+          updatePeak1Inputs(); // Resets UI to defaults based on current method/mode
+          saveAppState();      // Saves these restored defaults
+                               // No plot update is triggered here by design.
+      });
+  } else {
+      console.warn("restoreDefaultsButton not found in HTML. Please add it to index.html.");
+  }
+
   document.getElementById("analysisMethod").addEventListener("change", () => {
-    const analysisMethodValue = document.getElementById("analysisMethod").value; // Store value
-    if (analysisMethodValue === "voigt" || analysisMethodValue === "voigt5d") { // Use stored value
+    const analysisMethodValue = document.getElementById("analysisMethod").value;
+    if (analysisMethodValue === "voigt" || analysisMethodValue === "voigt5d") {
+      // If method changes to Voigt/Voigt5D, peak1Mode dropdown should visually switch to "broad".
+      // This change will be saved by saveAppState().
       document.getElementById("peak1Mode").value = "broad";
-      // Potentially disable/hide peak1Start, peak1End, peak2Start, peak2End for "voigt5d" later
-      // as these will be determined by the 5-peak fit
     }
-    // For simple method, or any other, we don't force "broad" mode here.
-    // updatePeak1Inputs will still be called and will set defaults if needed based on mode.
-    
-      updatePeak1Inputs(); // This updates D peak inputs and calls updateDisplayedFile
-    
-    // Explicitly call updateDisplayedFile if not voigt or voigt5d to ensure plot refreshes
-    // because updatePeak1Inputs might not call it if mode doesn't change.
-    // However, updatePeak1Inputs *does* call updateDisplayedFile if allFilesData.length > 0.
-    // The main thing is that if analysisMethod changes TO "simple", we need a refresh.
-    if (analysisMethodValue !== "voigt" && analysisMethodValue !== "voigt5d") {
-        if (allFilesData.length > 0) {
-            updateDisplayedFile();
-        }
-    }
-    saveAppState();
+    saveAppState(); // Only save state. Defaults are not applied on method change.
   });
 
   // Add event listeners for smoothing/fitting checkboxes in both tabs
@@ -165,7 +185,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (id.startsWith("archaeo")) {
           updateArchaeoPlot();
         } else {
-          updateDisplayedFile();
+          updateDisplayedFile(); // Checkboxes should still trigger updates
         }
         saveAppState();
       });
@@ -178,16 +198,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener("input", () => {
-        // No specific archaeo/experimental split needed here as these controls
-        // from the experimental tab are used globally.
-        updateDisplayedFile(); // This will also trigger archaeo updates if necessary via updateArchaeoPlot
+        // No plot update here, just save the state. Plot updates on button press.
         saveAppState();
       });
     }
   });
 
   document.getElementById("peak1Mode").addEventListener("change", () => {
-    updatePeak1Inputs(); // This calls updateDisplayedFile if data exists
+    // Changing mode only saves state. Defaults for this mode are applied via "Restore Defaults".
     saveAppState();
   });
 
@@ -196,7 +214,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener("input", () => {
-        updateDisplayedFile();
+        // No plot update here, just save the state. Plot updates on button press.
         saveAppState();
       });
     }
@@ -267,7 +285,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Add event listener for the Update Peaks button
   document.getElementById("updateButton").addEventListener("click", () => {
-    // updatePeak1Inputs(); // Not strictly needed here as it's for mode changes mostly
+    // No call to updatePeak1Inputs() here. It uses current UI values.
     const analysisMethodValue = document.getElementById("analysisMethod").value;
     if (analysisMethodValue === "voigt5d") {
       window.isVoigt5DTriggeredByButton = true;
@@ -402,21 +420,24 @@ document.getElementById("fileInput").addEventListener("change", function (e) {
   });
 });
 
-document.getElementById("updateButton").addEventListener("click", function () {
-  updatePeak1Inputs();
-  updateDisplayedFile();
-  if (document.getElementById("archaeologicalSection").style.display !== "none") {
-    updateArchaeoPlot();
-  }
-});
+// REMOVE THIS REDUNDANT LISTENER (already handled or should be commented out)
+// document.getElementById("updateButton").addEventListener("click", function () {
+//   updatePeak1Inputs();
+//   updateDisplayedFile();
+//   if (document.getElementById("archaeologicalSection").style.display !== "none") {
+//     updateArchaeoPlot();
+//   }
+// });
 
-document.getElementById("dBandWidthHeight").addEventListener("input", () => {
-  updateDisplayedFile();
-});
+// Ensure these specific listeners for width/height inputs are commented out
+// as they cause automatic updates instead of waiting for the button.
+// document.getElementById("dBandWidthHeight").addEventListener("input", () => {
+//   updateDisplayedFile();
+// });
 
-document.getElementById("gBandWidthHeight").addEventListener("input", () => {
-  updateDisplayedFile();
-});
+// document.getElementById("gBandWidthHeight").addEventListener("input", () => {
+//   updateDisplayedFile();
+// });
 
 function updateDisplayedFile() {
   displayedFileIndex = parseInt(document.getElementById("fileSelector").value);
@@ -944,54 +965,54 @@ function displayDerivedTemperatures(allPeaks, method, dBandWidthHeight, gBandWid
   tableDiv.appendChild(tableContainer);
 }
 
-function updatePeak1Inputs() {
-  const mode = document.getElementById("peak1Mode").value;
+function updatePeak1Inputs() { // Rewritten to ONLY set UI defaults. No parameters.
+  const analysisMethod = document.getElementById("analysisMethod").value;
+  const peak1ModeInput = document.getElementById("peak1Mode"); // Get the select element
+
   const peak1StartInput = document.getElementById("peak1Start");
   const peak1EndInput = document.getElementById("peak1End");
   const peak2StartInput = document.getElementById("peak2Start");
   const peak2EndInput = document.getElementById("peak2End");
+  const dBandWidthHeightInput = document.getElementById("dBandWidthHeight");
+  const gBandWidthHeightInput = document.getElementById("gBandWidthHeight");
 
-  // Get current analysis method
-  const analysisMethod = document.getElementById("analysisMethod").value;
+  console.log(`updatePeak1Inputs called. Method: ${analysisMethod}, Mode: ${peak1ModeInput.value}`);
 
-  if (mode === "broad") {
-    peak1StartInput.value = 1300;
-    peak1EndInput.value = 1450;
-    peak2StartInput.value = 1585;
-    peak2EndInput.value = 1620;
-  } else if (mode === "conventional") {
-    peak1StartInput.value = 1349;
-    peak1EndInput.value = 1352;
-    peak2StartInput.value = 1590;
-    peak2EndInput.value = 1610;
-  }
-
-  // Apply default 50% height when using Voigt or Voigt (5D) method
   if (analysisMethod === "voigt" || analysisMethod === "voigt5d") {
-    document.getElementById("dBandWidthHeight").value = 50;
-    document.getElementById("gBandWidthHeight").value = 50;
-  }
+      peak1ModeInput.value = "broad"; // Force mode to broad for Voigt methods
 
-  // For "voigt5d", we ensure "broad" mode is selected.
-  // The event listener for "analysisMethod" already sets peak1Mode to "broad"
-  // and then calls this function, so the "broad" values for start/end will be applied.
-  if (analysisMethod === "voigt5d") {
-    // We could also consider disabling the D and G band start/end inputs here for "voigt5d"
-    // as they are less directly relevant. For example:
-    // peak1StartInput.disabled = true; peak1EndInput.disabled = true;
-    // peak2StartInput.disabled = true; peak2EndInput.disabled = true;
-    // peak1ModeSelect.disabled = true; // also the mode selector
-    console.log("Voigt (5D) selected. D/G intervals will be broad and largely fixed by the multi-peak fit.");
-      } else {
-    // Re-enable inputs if switching away from voigt5d, if we chose to disable them.
-    // peak1StartInput.disabled = false; peak1EndInput.disabled = false;
-    // peak2StartInput.disabled = false; peak2EndInput.disabled = false;
-    // peak1ModeSelect.disabled = false;
-  }
+      // Apply broad D/G peak interval defaults
+      peak1StartInput.value = 1300;
+      peak1EndInput.value = 1450;
+      peak2StartInput.value = 1585;
+      peak2EndInput.value = 1620;
 
-  if (allFilesData.length > 0) {
-            updateDisplayedFile(); 
+      // Apply 50% width/height defaults for Voigt methods
+      dBandWidthHeightInput.value = 50;
+      gBandWidthHeightInput.value = 50;
+      console.log("Defaults applied for Voigt/Voigt5D method.");
+
+  } else { // For "simple" method (or any other non-Voigt method)
+      const currentPeak1Mode = peak1ModeInput.value; // Use the current mode for simple
+      if (currentPeak1Mode === "broad") {
+          peak1StartInput.value = 1300;
+          peak1EndInput.value = 1450;
+          peak2StartInput.value = 1585;
+          peak2EndInput.value = 1620;
+          console.log("D/G Interval defaults applied for Simple method, Broad mode.");
+      } else if (currentPeak1Mode === "conventional") {
+          peak1StartInput.value = 1349;
+          peak1EndInput.value = 1352;
+          peak2StartInput.value = 1590;
+          peak2EndInput.value = 1610;
+          console.log("D/G Interval defaults applied for Simple method, Conventional mode.");
+      }
+      // For "simple" method, D/G band width/height inputs are NOT changed by this function.
+      // They retain their user-edited values or previously set values.
+      console.log("Width/Height inputs untouched for Simple method by updatePeak1Inputs.");
   }
+  // This function no longer calls saveAppState() or updateDisplayedFile().
+  // The caller is responsible for that if needed (e.g., after initial load or restore defaults).
 }
 
 function updatePlot(spectrumData) {
@@ -1867,22 +1888,22 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
   const tableContainer = document.createElement('div');
   tableContainer.innerHTML = `
     <h3>Top Peaks:</h3>
-    <table border="1" style="border-collapse: collapse; width: 100%; max-width: 800px; font-family: Arial, sans-serif; font-size: 14px; margin-bottom: 20px;">
+    <table class="peak-info-table" border="1">
       <thead>
-        <tr style="background-color: #f2f2f2;">
-          <th style="padding: 5px; text-align: center;">
+        <tr>
+          <th>
             <input type="checkbox" id="selectAllCheckbox" ${areAllSelected ? 'checked' : ''}>
           </th>
-          <th style="padding: 5px; text-align: left;">Name</th>
-          <th style="padding: 5px; text-align: center;">Temperature</th>
-          <th style="padding: 5px; text-align: center;">D Peak (cm⁻¹)</th>
-          <th style="padding: 5px; text-align: center;">G Peak (cm⁻¹)</th>
-          <th style="padding: 5px; text-align: center;">D Peak Height</th>
-          <th style="padding: 5px; text-align: center;">G Peak Height</th>
-          <th style="padding: 5px; text-align: center;">HD/HG</th>
+          <th>Name</th>
+          <th>Temperature</th>
+          <th>D Peak (cm⁻¹)</th>
+          <th>G Peak (cm⁻¹)</th>
+          <th>D Peak Height</th>
+          <th>G Peak Height</th>
+          <th>HD/HG</th>
           <th>D width ${dBandWidthHeight + "%H"}</th>
           <th>G width ${gBandWidthHeight + "%H"}</th>
-          <th style="padding: 5px; text-align: center;">WD/WG</th>
+          <th>WD/WG</th>
         </tr>
       </thead>
       <tbody>
@@ -1908,25 +1929,24 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
     const dPeakWavelength = file.dPeakWavelength != null ? parseFloat(file.dPeakWavelength).toFixed(0) : "N/A";
     const gPeakWavelength = file.gPeakWavelength != null ? parseFloat(file.gPeakWavelength).toFixed(0) : "N/A";
 
-    // Set individual checkbox state here
     tbodyElement.innerHTML += `
       <tr>
-        <td style="padding: 5px; text-align: center;">
+        <td style="text-align: center;">
           <input type="checkbox" 
                  class="sample-checkbox" 
                  data-sample-name="${file.name}" 
                  ${isChecked ? 'checked' : ''}>
         </td>
-        <td style="padding: 5px;">${file.name}</td>
-        <td style="padding: 5px; text-align: center;">${temp}</td>
-        <td style="padding: 5px; text-align: center;">${dPeakWavelength}</td>
-        <td style="padding: 5px; text-align: center;">${gPeakWavelength}</td>
-        <td style="padding: 5px; text-align: center;">${dHeight}</td>
-        <td style="padding: 5px; text-align: center;">${gHeight}</td>
-        <td style="padding: 5px; text-align: center;">${hdHg}</td>
-        <td style="padding: 5px; text-align: center;">${dWidth}</td>
-        <td style="padding: 5px; text-align: center;">${gWidth}</td>
-        <td style="padding: 5px; text-align: center;">${wdWg}</td>
+        <td title="${file.name}">${file.name}</td>
+        <td>${temp}</td>
+        <td>${dPeakWavelength}</td>
+        <td>${gPeakWavelength}</td>
+        <td>${dHeight}</td>
+        <td>${gHeight}</td>
+        <td>${hdHg}</td>
+        <td>${dWidth}</td>
+        <td>${gWidth}</td>
+        <td>${wdWg}</td>
       </tr>
     `;
 
