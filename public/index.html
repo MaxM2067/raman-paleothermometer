@@ -28,6 +28,30 @@
         font-size: 14px;
         min-width: 200px;
       }
+      /* Loading spinner animation */
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      .button-spinner {
+        display: none;
+        width: 16px;
+        height: 16px;
+        border: 3px solid rgba(255,255,255,0.3);
+        border-radius: 50%;
+        border-top-color: #fff;
+        animation: spin 1s ease-in-out infinite;
+        margin-left: 8px;
+        vertical-align: middle;
+      }
+      .loading {
+        position: relative;
+        cursor: wait !important;
+        opacity: 0.8;
+      }
+      .loading .button-spinner {
+        display: inline-block;
+      }
     </style>
   </head>
   <body>
@@ -71,7 +95,14 @@
               </select>
             </label>
 
-            <label>
+            <div id="voigt5dIterationsLabel" style="display: none; margin-top: 8px; margin-bottom: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Iterations (time costly):</span>
+                <input type="number" id="voigt5dIterations" value="1" min="1" step="1" class="settings-input" style="width: 80px;">
+              </div>
+            </div>
+
+            <label id="peak1ModeLabel"> <!-- Add id="peak1ModeLabel" here -->
               Peak's range Mode (D1,G):
               <select id="peak1Mode">
                 <option value="broad" selected>Broad</option>
@@ -156,6 +187,7 @@
           <div class="controls-row">
             <button id="updateButton" class="update-button">
               Update Peaks
+              <span class="button-spinner"></span>
             </button>
             <button id="restoreDefaultsButton" class="restore-button">
               Restore Default Settings
@@ -228,6 +260,7 @@
           <div class="controls-row" style="margin-top: 15px;">
             <button id="archaeoUpdateButton" class="update-button">
               Derive Temperatures
+              <span class="button-spinner"></span>
             </button>
           </div>
 

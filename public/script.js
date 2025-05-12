@@ -52,6 +52,8 @@ function saveAppState() {
             archaeoCbParamWdWg: document.getElementById("archaeoCbParamWdWg")?.checked,
             archaeoCbParamDWidth: document.getElementById("archaeoCbParamDWidth")?.checked,
             archaeoCbParamGWidth: document.getElementById("archaeoCbParamGWidth")?.checked,
+            // Add new input for Voigt 5D iterations
+            voigt5dIterations: document.getElementById("voigt5dIterations")?.value,
         }
     };
     try {
@@ -71,6 +73,10 @@ function loadAppState() {
             const state = JSON.parse(storedState);
             console.log("Loading app state:", state);
 
+            // Define helper functions here to ensure they are always in scope if state is loaded
+            const setValue = (id, value) => { const el = document.getElementById(id); if (el && value !== undefined && value !== null) el.value = value; };
+            const setChecked = (id, checked) => { const el = document.getElementById(id); if (el && checked !== undefined && checked !== null) el.checked = checked; };
+
             allFilesData = state.allFilesData || [];
             displayedFileIndex = state.displayedFileIndex || 0;
             archaeologicalFiles = state.archaeologicalFiles || [];
@@ -80,8 +86,7 @@ function loadAppState() {
 
             if (state.uiSettings) {
                 const settings = state.uiSettings;
-                const setValue = (id, value) => { const el = document.getElementById(id); if (el && value !== undefined && value !== null) el.value = value; };
-                const setChecked = (id, checked) => { const el = document.getElementById(id); if (el && checked !== undefined && checked !== null) el.checked = checked; };
+                // Helpers are now defined above, so no need for const declarations here
 
                 setValue("analysisMethod", settings.analysisMethod);
                 setValue("peak1Mode", settings.peak1Mode);
@@ -108,7 +113,14 @@ function loadAppState() {
                 setChecked("archaeoCbParamWdWg", settings.archaeoCbParamWdWg);
                 setChecked("archaeoCbParamDWidth", settings.archaeoCbParamDWidth);
                 setChecked("archaeoCbParamGWidth", settings.archaeoCbParamGWidth);
+                // Add new input for Voigt 5D iterations
+                setValue("voigt5dIterations", settings.voigt5dIterations); //setValue is used here, was defined above
             }
+
+            // Load state for Voigt 5D iterations - THIS BLOCK IS NOW REDUNDANT due to above setValue call if uiSettings exists
+            // if (state.uiSettings && state.uiSettings.voigt5dIterations !== undefined) { 
+            //     setValue("voigt5dIterations", state.uiSettings.voigt5dIterations);
+            // }
 
             const fileSelector = document.getElementById("fileSelector");
             if (fileSelector) {
@@ -180,6 +192,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   // The direct call to updatePeak1Inputs() that was previously here (before it was parameterized) is removed.
 
+  // Initial toggle for peak1Mode selector based on loaded/default analysis method
+  togglePeak1ModeSelector(); 
+  // Initial toggle for Voigt 5D iterations input
+  toggleVoigt5dIterationsInput();
+
   // Event listener for the NEW "Restore Default Settings" button
   // User needs to add <button id="restoreDefaultsButton">Restore Default Settings</button> to HTML
   const restoreBtn = document.getElementById("restoreDefaultsButton");
@@ -201,8 +218,20 @@ document.addEventListener("DOMContentLoaded", () => {
       // This change will be saved by saveAppState().
       document.getElementById("peak1Mode").value = "broad";
     }
+    togglePeak1ModeSelector(); // Toggle visibility based on new method
+    toggleVoigt5dIterationsInput(); // Also toggle iterations input visibility
     saveAppState(); // Only save state. Defaults are not applied on method change.
   });
+
+  // Add event listener for the new Voigt 5D iterations input
+  const voigt5dIterationsInput = document.getElementById("voigt5dIterations");
+  if (voigt5dIterationsInput) {
+    voigt5dIterationsInput.addEventListener("input", () => {
+      saveAppState(); // Save state when iterations change
+      // Optionally, you might want to trigger an update if the current method is Voigt 5D
+      // and the user expects immediate re-calculation, but typically updates are button-driven.
+    });
+  }
 
   // Add event listeners for smoothing/fitting checkboxes in both tabs
   ["showSmoothing", "showFitting", "archaeoShowSmoothing", "archaeoShowFitting"].forEach(id => {
@@ -312,14 +341,35 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Add event listener for the Update Peaks button
   document.getElementById("updateButton").addEventListener("click", () => {
+    // Show loading state
+    showButtonLoading("updateButton");
+    
     // No call to updatePeak1Inputs() here. It uses current UI values.
     const analysisMethodValue = document.getElementById("analysisMethod").value;
     if (analysisMethodValue === "voigt5d") {
       window.isVoigt5DTriggeredByButton = true;
-      updateDisplayedFile();
-      window.isVoigt5DTriggeredByButton = false;
+      setTimeout(() => { // Use setTimeout to allow UI to update before heavy processing
+        try {
+          updateDisplayedFile();
+        } catch (error) {
+          console.error("Error during update:", error);
+        } finally {
+          window.isVoigt5DTriggeredByButton = false;
+          // Hide loading state when done
+          hideButtonLoading("updateButton");
+        }
+      }, 50);
     } else {
-      updateDisplayedFile();
+      setTimeout(() => { // Use setTimeout to allow UI to update before processing
+        try {
+          updateDisplayedFile();
+        } catch (error) {
+          console.error("Error during update:", error);
+        } finally {
+          // Hide loading state when done
+          hideButtonLoading("updateButton");
+        }
+      }, 50);
     }
     saveAppState();
   });
@@ -345,13 +395,34 @@ document.addEventListener("DOMContentLoaded", () => {
   const archUpdateBtn = document.getElementById("archaeoUpdateButton");
   if (archUpdateBtn) {
     archUpdateBtn.addEventListener("click", () => {
+      // Show loading state
+      showButtonLoading("archaeoUpdateButton");
+      
       const analysisMethodValue = document.getElementById("analysisMethod").value;
       if (analysisMethodValue === "voigt5d") {
         window.isVoigt5DTriggeredByButton = true;
-        updateArchaeoPlot();
-        window.isVoigt5DTriggeredByButton = false;
+        setTimeout(() => { // Use setTimeout to allow UI to update before heavy processing
+          try {
+            updateArchaeoPlot();
+          } catch (error) {
+            console.error("Error during archaeological update:", error);
+          } finally {
+            window.isVoigt5DTriggeredByButton = false;
+            // Hide loading state when done
+            hideButtonLoading("archaeoUpdateButton");
+          }
+        }, 50);
       } else {
-        updateArchaeoPlot();
+        setTimeout(() => { // Use setTimeout to allow UI to update before processing
+          try {
+            updateArchaeoPlot();
+          } catch (error) {
+            console.error("Error during archaeological update:", error);
+          } finally {
+            // Hide loading state when done
+            hideButtonLoading("archaeoUpdateButton");
+          }
+        }, 50);
       }
       saveAppState(); // Added saveAppState for consistency
     });
@@ -3515,6 +3586,11 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
     }
     console.log("Executing STUB fitDComplexAndGPeak_Voigt5D with D-data length:", xDataD_input.length, "G-data length:", xDataG_input.length);
 
+    // Read the number of iterations from the input field and use this for the loop
+    const voigt5dIterationsValueFromElement = parseInt(document.getElementById("voigt5dIterations")?.value || "1", 10);
+    const optimizationIterationsToUse = isNaN(voigt5dIterationsValueFromElement) || voigt5dIterationsValueFromElement < 1 ? 1 : voigt5dIterationsValueFromElement;
+    console.log(`Voigt (5D) will run for ${optimizationIterationsToUse} iterations (read from UI).`);
+
     // --- Initial Parameter Estimation for all peaks --- 
     let gMuGuess = 1590, gAGuess = 15, d1MuGuess = 1350, d1AGuess = 18;
     const defaultSigma = 30, defaultGamma = 25, defaultEta = 0.5; // Increased default sigma and gamma
@@ -3627,8 +3703,7 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
     // --- End of Objective Function ---
 
     // --- Modified Placeholder for Optimization Loop ---
-    const optimizationIterations = 1; 
-    console.log(`Starting Voigt (5D) fitting process for ${canvasIdBase} with ${optimizationIterations} iterations.`);
+    console.log(`Starting Voigt (5D) fitting process for ${canvasIdBase} with ${optimizationIterationsToUse} iterations.`);
 
     const learningRateGradientDescent = 35e-5; 
     const convergenceThreshold = 15.0; 
@@ -3639,12 +3714,10 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
     let lowestErrorOverall = calculateModelError(bestPeakParamsOverall, xDataD_input, yDataD_input, xDataG_input, yDataG_input); // Error of initial params
     console.log(`Initial Lowest Error Overall (${canvasIdBase}): ${lowestErrorOverall.toExponential(4)}`);
 
-
-    // Placeholder for a real optimization loop
-    for (let iter = 0; iter < optimizationIterations; iter++) {
-        // const errorBeforeIteration = calculateModelError(currentPeakParams, xDataD_input, yDataD_input, xDataG_input, yDataG_input); // This is now calculated below as errorAfterUpdate
+    // Main optimization loop using the iteration count from the UI
+    for (let iter = 0; iter < optimizationIterationsToUse; iter++) {
+        // const errorBeforeIteration = calculateModelError(currentPeakParams, xDataD_input, yDataD_input, xDataG_input, yDataG_input);
         // console.log(`Iteration ${iter} (${canvasIdBase}): Starting Error = ${errorBeforeIteration.toExponential(4)}`);
-
 
         const d1ParamsBeforeGrad = JSON.parse(JSON.stringify(currentPeakParams.find(p => p.type === "D1")));
         // console.log(`  Iter ${iter} (${canvasIdBase}) D1 PARAMS PRE-GRAD: A=${d1ParamsBeforeGrad.A.toFixed(2)}, mu=${d1ParamsBeforeGrad.mu.toFixed(2)}`);
@@ -3937,4 +4010,57 @@ function calculateAndStoreCalibrationStats(experimentalDataForCalibration, analy
     });
     window.calibrationStats = newCalibStats;
     console.log("Updated window.calibrationStats:", window.calibrationStats);
+}
+
+// New function to toggle visibility of Peak1 Mode selector
+function togglePeak1ModeSelector() {
+  const analysisMethodValue = document.getElementById("analysisMethod")?.value;
+  const peak1ModeLabel = document.getElementById("peak1ModeLabel");
+  const peak1ModeSelect = document.getElementById("peak1Mode");
+
+  if (!peak1ModeLabel || !peak1ModeSelect) {
+    console.warn("Peak1 mode selector or its label not found. Skipping visibility toggle.");
+    return;
+  }
+
+  if (analysisMethodValue === "voigt" || analysisMethodValue === "voigt5d") {
+    peak1ModeLabel.style.display = "none";
+    peak1ModeSelect.value = "broad"; // Ensure it's set to broad when hidden
+  } else {
+    peak1ModeLabel.style.display = ""; // Or "block", "inline-block" depending on original CSS
+  }
+}
+
+// New function to toggle visibility of Voigt 5D Iterations input
+function toggleVoigt5dIterationsInput() {
+  const analysisMethodValue = document.getElementById("analysisMethod")?.value;
+  const voigt5dIterationsLabel = document.getElementById("voigt5dIterationsLabel");
+
+  if (!voigt5dIterationsLabel) {
+    console.warn("Voigt 5D iterations label not found. Skipping visibility toggle.");
+    return;
+  }
+
+  if (analysisMethodValue === "voigt5d") {
+    voigt5dIterationsLabel.style.display = "block"; // Use block for the container div
+  } else {
+    voigt5dIterationsLabel.style.display = "none";
+  }
+}
+
+// Helper functions to handle button loading states
+function showButtonLoading(buttonId) {
+  const button = document.getElementById(buttonId);
+  if (button) {
+    button.classList.add('loading');
+    button.disabled = true;
+  }
+}
+
+function hideButtonLoading(buttonId) {
+  const button = document.getElementById(buttonId);
+  if (button) {
+    button.classList.remove('loading');
+    button.disabled = false;
+  }
 }
