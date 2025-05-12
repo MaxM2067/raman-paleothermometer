@@ -1,8 +1,11 @@
 let allFilesData = [];
 let displayedFileIndex = 0;
 let includedSamples = new Set(); // Track which samples are included in calculations
+let voigt5dProcessedSamples = new Set(); // Track samples that have been processed with Voigt 5D
 let archaeologicalFiles = [];
 let selectedArchaeoIndex = 0;
+let isBatchProcessing = false; // Track if batch processing is currently running
+let shouldStopBatchProcessing = false; // Flag to stop batch processing
 window.isVoigt5DTriggeredByButton = false; // Corrected global flag initialization
 
 // Add this flag at the top of your script
@@ -15,6 +18,10 @@ if (typeof window.archaeologicalFiles === 'undefined') {
 
 if (!window.statsCharts) window.statsCharts = {};
 if (!window.myCharts) window.myCharts = {}; // Ensure this is also initialized if not already
+
+// Add near the top with other global variables
+let archaeoBatchProcessing = false;
+let shouldStopArchaeoBatchProcessing = false;
 
 // Add this new function
 function saveAppState() {
@@ -29,6 +36,7 @@ function saveAppState() {
         archaeologicalFiles: archaeologicalFiles,
         selectedArchaeoIndex: selectedArchaeoIndex,
         includedSamples: Array.from(includedSamples), // Convert Set to Array for JSON
+        voigt5dProcessedSamples: Array.from(voigt5dProcessedSamples), // Save the Voigt 5D processed samples
         uiSettings: {
             analysisMethod: document.getElementById("analysisMethod")?.value,
             peak1Mode: document.getElementById("peak1Mode")?.value,
@@ -83,6 +91,7 @@ function loadAppState() {
             window.archaeologicalFiles = archaeologicalFiles; // Ensure global window object is updated if used directly
             selectedArchaeoIndex = state.selectedArchaeoIndex || 0;
             includedSamples = new Set(state.includedSamples || []);
+            voigt5dProcessedSamples = new Set(state.voigt5dProcessedSamples || []); // Load Voigt 5D processed samples
 
             if (state.uiSettings) {
                 const settings = state.uiSettings;
@@ -121,6 +130,41 @@ function loadAppState() {
             // if (state.uiSettings && state.uiSettings.voigt5dIterations !== undefined) { 
             //     setValue("voigt5dIterations", state.uiSettings.voigt5dIterations);
             // }
+
+            // NEW: Check if there's loaded data with valid Voigt 5D results and add to voigt5dProcessedSamples
+            if (window.latestResultsByMethod && window.latestResultsByMethod.voigt5d) {
+                const voigt5dData = window.latestResultsByMethod.voigt5d;
+                voigt5dData.forEach(item => {
+                    // If any key parameters are non-null, consider it processed
+                    if ((item.hdHg !== null && item.hdHg !== undefined) || 
+                        (item.dWidth !== null && item.dWidth !== undefined) || 
+                        (item.gWidth !== null && item.gWidth !== undefined) || 
+                        (item.wdWg !== null && item.wdWg !== undefined)) {
+                        voigt5dProcessedSamples.add(item.name);
+                    }
+                });
+            }
+
+            // Also check allFilesData directly for any samples that might have valid voigt5d results
+            if (allFilesData && allFilesData.length > 0) {
+                // Need to first check if allFilesData items contain voigt5d data directly
+                const hasVoigt5dData = allFilesData.some(file => 
+                    file.voigt5d || (file.results && file.results.voigt5d));
+                
+                if (hasVoigt5dData) {
+                    allFilesData.forEach(file => {
+                        const voigt5dResult = file.voigt5d || (file.results && file.results.voigt5d);
+                        if (voigt5dResult && typeof voigt5dResult === 'object') {
+                            // If any values are non-null, consider it processed
+                            const hasValidData = Object.values(voigt5dResult).some(val => 
+                                val !== null && val !== undefined);
+                            if (hasValidData) {
+                                voigt5dProcessedSamples.add(file.name);
+                            }
+                        }
+                    });
+                }
+            }
 
             const fileSelector = document.getElementById("fileSelector");
             if (fileSelector) {
@@ -185,6 +229,20 @@ document.addEventListener("DOMContentLoaded", () => {
       saveAppState();      // Save these initial defaults.
   }
 
+  // NEW: Additional check for Voigt 5D processed samples
+  if (window.latestResultsByMethod && window.latestResultsByMethod.voigt5d) {
+    window.latestResultsByMethod.voigt5d.forEach(item => {
+      // If this item has valid data (not just null placeholder values)
+      if ((item.hdHg !== null && item.hdHg !== undefined) || 
+          (item.dWidth !== null && item.dWidth !== undefined) || 
+          (item.gWidth !== null && item.gWidth !== undefined) || 
+          (item.wdWg !== null && item.wdWg !== undefined)) {
+        // Add it to the set of processed samples
+        voigt5dProcessedSamples.add(item.name);
+      }
+    });
+  }
+
   // Initial plot update using values now in the UI (either from storage or initial defaults)
   // Ensures a plot is shown on first load or refresh.
   if (allFilesData.length > 0) {
@@ -196,7 +254,15 @@ document.addEventListener("DOMContentLoaded", () => {
   togglePeak1ModeSelector(); 
   // Initial toggle for Voigt 5D iterations input
   toggleVoigt5dIterationsInput();
-
+  // Initial toggle for band parameters table
+  toggleBandParametersTable();
+  // Initial toggle for Process All button
+  toggleProcessAllButton();
+  // Initial toggle for Archaeo Process All button if in archaeo tab
+  if (document.getElementById("archaeologicalSection").style.display !== "none") {
+    toggleArchaeoProcessAllButton();
+  }
+  
   // Event listener for the NEW "Restore Default Settings" button
   // User needs to add <button id="restoreDefaultsButton">Restore Default Settings</button> to HTML
   const restoreBtn = document.getElementById("restoreDefaultsButton");
@@ -220,6 +286,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     togglePeak1ModeSelector(); // Toggle visibility based on new method
     toggleVoigt5dIterationsInput(); // Also toggle iterations input visibility
+    toggleProcessAllButton(); // Toggle Process All button visibility
+    // Toggle archaeo Process All button if in archaeo tab
+    if (document.getElementById("archaeologicalSection").style.display !== "none") {
+      toggleArchaeoProcessAllButton();
+    }
+    // Update band parameters table visibility
+    toggleBandParametersTable();
     saveAppState(); // Only save state. Defaults are not applied on method change.
   });
 
@@ -348,6 +421,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const analysisMethodValue = document.getElementById("analysisMethod").value;
     if (analysisMethodValue === "voigt5d") {
       window.isVoigt5DTriggeredByButton = true;
+      // Add the current file to the set of Voigt 5D processed samples
+      if (allFilesData[displayedFileIndex]) {
+        voigt5dProcessedSamples.add(allFilesData[displayedFileIndex].name);
+      }
       setTimeout(() => { // Use setTimeout to allow UI to update before heavy processing
         try {
           updateDisplayedFile();
@@ -389,6 +466,8 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("tabExperimental").classList.remove("active");
     // Update archaeological tab when switching to it
     updateArchaeoPlot();
+    // Toggle archaeo Process All button visibility
+    toggleArchaeoProcessAllButton();
   });
 
   // Add event listener for the new Derive Temperatures button in the archaeological tab
@@ -401,6 +480,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const analysisMethodValue = document.getElementById("analysisMethod").value;
       if (analysisMethodValue === "voigt5d") {
         window.isVoigt5DTriggeredByButton = true;
+        // Add the current archaeological file to the set of Voigt 5D processed samples
+        if (archaeologicalFiles[selectedArchaeoIndex]) {
+          voigt5dProcessedSamples.add(archaeologicalFiles[selectedArchaeoIndex].name);
+        }
         setTimeout(() => { // Use setTimeout to allow UI to update before heavy processing
           try {
             updateArchaeoPlot();
@@ -446,10 +529,19 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      const allPeaksForCurrentMethod = resultsByMethod[currentMethod];
+      let allPeaksForCurrentMethod = resultsByMethod[currentMethod];
       if (!allPeaksForCurrentMethod || allPeaksForCurrentMethod.length === 0) {
           plotsContainer.innerHTML = "<p>No peak data available for the current method to build curves.</p>";
           return;
+      }
+
+      // Filter Voigt 5D data to only include processed samples
+      if (currentMethod === 'voigt5d') {
+        allPeaksForCurrentMethod = allPeaksForCurrentMethod.filter(file => voigt5dProcessedSamples.has(file.name));
+        if (allPeaksForCurrentMethod.length === 0) {
+          plotsContainer.innerHTML = "<p>No samples have been processed with Voigt 5D yet. Select each sample and press 'Update Peaks' to process it.</p>";
+          return;
+        }
       }
 
       const currentMethodName = currentMethod === 'simple' ? 'Simple' : (currentMethod === 'voigt' ? 'Voigt' : 'Voigt (5D)');
@@ -657,12 +749,27 @@ function updateDisplayedFile() {
   displayedFileIndex = parseInt(document.getElementById("fileSelector").value);
   if (allFilesData.length === 0) return;
 
-  // Always update calibration stats using the first file (ensures stats are up-to-date)
-  // updatePlot(allFilesData[0].spectrumData); // OLD LINE - Always uses the first file
-
-  // Use the selected file's spectrum data to update the main plot
-  if (allFilesData[displayedFileIndex]) {
-    updatePlot(allFilesData[displayedFileIndex].spectrumData);
+  // NEW: Check if we're using Voigt 5D and don't have complete data yet
+  const currentMethod = document.getElementById("analysisMethod").value;
+  if (currentMethod === "voigt5d" && (!window.latestResultsByMethod || !window.latestResultsByMethod.voigt5d || 
+      window.latestResultsByMethod.voigt5d.some(item => !voigt5dProcessedSamples.has(item.name)))) {
+    // We're on Voigt 5D, but data is incomplete - set this flag temporarily to force recalculation
+    const wasButtonTriggered = window.isVoigt5DTriggeredByButton;
+    window.isVoigt5DTriggeredByButton = true;
+    
+    // Use the selected file's spectrum data to update the main plot
+    if (allFilesData[displayedFileIndex]) {
+      updatePlot(allFilesData[displayedFileIndex].spectrumData);
+    }
+    
+    // Restore the original flag state
+    window.isVoigt5DTriggeredByButton = wasButtonTriggered;
+  } else {
+    // Normal case - proceed as before
+    // Use the selected file's spectrum data to update the main plot
+    if (allFilesData[displayedFileIndex]) {
+      updatePlot(allFilesData[displayedFileIndex].spectrumData);
+    }
   }
 
   // Only update the archaeological plot if its tab is currently visible
@@ -830,7 +937,9 @@ function updateArchaeoPlot() {
         } else {
             intervalsForDerivation = intervals;
         }
-        return findTopPeaks(
+        
+        // Get the results of peak finding
+        const results = findTopPeaks(
           fileData.spectrumData.wavelengths,
           fileData.spectrumData.intensities,
           intervalsForDerivation, // Use intervals specific to this derivation context
@@ -838,6 +947,18 @@ function updateArchaeoPlot() {
           method, // UI selected method
           "archaeoSpectrumChart_derivedTemp" // Different context
         );
+        
+        // NEW: If we successfully processed with Voigt 5D, mark this sample as processed
+        if (method === "voigt5d" && results.topPeaks && results.topPeaks.length > 0) {
+          const d = results.topPeaks[0] || {};
+          const g = results.topPeaks[1] || {};
+          // Check if we got meaningful data from the computation
+          if ((d.height && g.height) || d.width || g.width) {
+            voigt5dProcessedSamples.add(fileData.name);
+          }
+        }
+        
+        return results;
       })();
 
       const d = derivedTopPeaks[0] || {}; // Use renamed
@@ -883,6 +1004,11 @@ function updateArchaeoPlot() {
        ) {
         console.log("updateArchaeoPlot: Using pre-calculated results from window.latestResultsByMethod for calibration charts.");
         resultsForCalibration = window.latestResultsByMethod;
+        
+        // Filter the Voigt 5D data to only include processed samples
+        if (resultsForCalibration.voigt5d) {
+            resultsForCalibration.voigt5d = resultsForCalibration.voigt5d.filter(file => voigt5dProcessedSamples.has(file.name));
+        }
     } else {
         console.log("updateArchaeoPlot: Recalculating results for calibration charts as pre-calculated data is unsuitable or unavailable.");
         // This block is the original calculation logic for resultsByMethod, now assigned to resultsForCalibration
@@ -1366,8 +1492,14 @@ function updatePlot(spectrumData) {
           dPeakWavelength: d.wavelength || null,
           gPeakWavelength: g.wavelength || null
         });
+        
+        // NEW: Track this sample as processed for Voigt 5D if we successfully calculated values for it
+        // This helps ensure the table shows data immediately after page reload
+        if (methodName === "voigt5d" && (hdHg !== null || d.width !== null || g.width !== null || wdWg !== null)) {
+          voigt5dProcessedSamples.add(fileData.name);
+        }
       } else {
-        // This case applies to "voigt5d" when it's not the currentMethodForDisplay.
+        // This case applies to "voigt5d" when it's not the currentMethodForDisplay OR button not pressed.
         // Populate with placeholder data.
         const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
         const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
@@ -2128,8 +2260,42 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
     return;
   }
 
+  // Filter peaks if method is voigt5d to only show processed samples
+  let peaksToDisplay = allPeaks;
+  if (method === "voigt5d") {
+    // MODIFY THIS SECTION: Instead of filtering by voigt5dProcessedSamples, filter by actual data presence
+    // Keep samples that either are in voigt5dProcessedSamples OR have actual non-null data
+    peaksToDisplay = allPeaks.filter(file => 
+      voigt5dProcessedSamples.has(file.name) || // Keep if it's marked as processed
+      (file.hdHg !== null && file.hdHg !== undefined) || // Or if it has valid hdHg data
+      (file.dWidth !== null && file.dWidth !== undefined) || // Or if it has valid dWidth data
+      (file.gWidth !== null && file.gWidth !== undefined) || // Or if it has valid gWidth data
+      (file.wdWg !== null && file.wdWg !== undefined) // Or if it has valid wdWg data
+    );
+    
+    // If we found valid data, add those samples to the processed set to remember them
+    peaksToDisplay.forEach(file => {
+      if ((file.hdHg !== null && file.hdHg !== undefined) ||
+          (file.dWidth !== null && file.dWidth !== undefined) ||
+          (file.gWidth !== null && file.gWidth !== undefined) ||
+          (file.wdWg !== null && file.wdWg !== undefined)) {
+        voigt5dProcessedSamples.add(file.name);
+      }
+    });
+
+    // Save the app state to ensure voigt5dProcessedSamples is persisted
+    if (!isLoadingState) {
+      saveAppState();
+    }
+
+    if (peaksToDisplay.length === 0) {
+      peakInfoDiv.innerHTML = "<h3>Top Peaks:</h3><p>No samples have been processed with Voigt 5D yet. Select each sample and press 'Update Peaks' to process it.</p>";
+      return;
+    }
+  }
+
   // Get the list of sample names for the current view
-  const sampleNames = allPeaks.map(file => file.name);
+  const sampleNames = peaksToDisplay.map(file => file.name);
 
   // Initialize includedSamples if it's the first load for *these* samples
   if (peakInfoDiv.innerHTML.trim() === '' && includedSamples.size === 0 && sampleNames.length > 0) {
@@ -2174,7 +2340,7 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
   const tbodyElement = tableContainer.querySelector('tbody');
 
   // Populate table rows and gather data for plots
-  allPeaks.forEach((file) => {
+  peaksToDisplay.forEach((file) => {
     const temp = file.temperature.replace(" °C", "");
     const hdHg = file.hdHg != null ? file.hdHg.toFixed(2) : "N/A";
     const dHeight = file.dHeight != null ? parseFloat(file.dHeight).toFixed(0) : "N/A";
@@ -2237,7 +2403,7 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
     if (selectAllCheckbox) {
         selectAllCheckbox.addEventListener('change', function() {
             const isChecked = this.checked;
-            const currentSampleNamesOnDisplay = allPeaks.map(file => file.name);
+            const currentSampleNamesOnDisplay = peaksToDisplay.map(file => file.name);
             if (isChecked) {
                 currentSampleNamesOnDisplay.forEach(name => includedSamples.add(name));
             } else {
@@ -2426,8 +2592,19 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
   if (!data || data.length === 0) return document.createElement('div');
 
   // Filter data to only include checked samples
-  const filteredData = data.filter(point => includedSamples.has(point.name));
-  const filteredOtherData = otherMethodData ? otherMethodData.filter(point => includedSamples.has(point.name)) : null;
+  let filteredData = data.filter(point => includedSamples.has(point.name));
+  
+  // Additionally filter for Voigt 5D to only include processed samples
+  if (currentMethodName === 'Voigt (5D)') {
+    filteredData = filteredData.filter(point => voigt5dProcessedSamples.has(point.name));
+    if (filteredData.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.innerHTML = `<h3>${method}</h3><p>No samples have been processed with Voigt 5D yet. Select each sample and press 'Update Peaks' to process it.</p>`;
+      return emptyDiv;
+    }
+  }
+  
+  let filteredOtherData = otherMethodData ? otherMethodData.filter(point => includedSamples.has(point.name)) : null;
 
   // Normalize temperature to number for both datasets
   filteredData.forEach(point => point.temperature = Number(point.temperature));
@@ -3575,7 +3752,12 @@ function calculateSumOfPseudoVoigts(x, peakParamsArray) {
 // STUB function for Voigt (5D) fitting.
 // REPLACE THE BODY WITH ACTUAL FITTING LOGIC LATER.
 function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, yDataG_input, canvasIdBase = "spectrumChart_voigt5d_stub") {
-    if (!window.isVoigt5DTriggeredByButton) {
+    // MODIFIED CHECK: If we're not triggering by button but have a reload, still do a basic calculation
+    const isReload = document.readyState === "complete" && 
+                     document.getElementById("analysisMethod")?.value === "voigt5d";
+    const shouldProcessAnyway = isReload && window.latestResultsByMethod && window.latestResultsByMethod.voigt5d;
+    
+    if (!window.isVoigt5DTriggeredByButton && !shouldProcessAnyway) {
         console.warn(`fitDComplexAndGPeak_Voigt5D (${canvasIdBase}) called without button press. Aborting Voigt (5D) fit.`);
         // Return a structure that matches what the calling function expects, but with empty/default data.
         return {
@@ -3972,7 +4154,12 @@ function calculateAndStoreCalibrationStats(experimentalDataForCalibration, analy
     }
 
     // Filter data to only include checked samples from the experimental tab
-    const filteredExperimentalData = experimentalDataForCalibration.filter(point => includedSamples.has(point.name));
+    let filteredExperimentalData = experimentalDataForCalibration.filter(point => includedSamples.has(point.name));
+
+    // If using Voigt 5D data, ensure we only use processed samples
+    if (analysisMethodName === 'voigt5d') {
+        filteredExperimentalData = filteredExperimentalData.filter(point => voigt5dProcessedSamples.has(point.name));
+    }
 
     if (filteredExperimentalData.length === 0) {
         console.warn("calculateAndStoreCalibrationStats: No *included* experimental samples to build calibration stats.");
@@ -4054,6 +4241,37 @@ function showButtonLoading(buttonId) {
   if (button) {
     button.classList.add('loading');
     button.disabled = true;
+    
+    // Create or update loading indicator
+    let loadingIndicator = button.querySelector('.loading-indicator');
+    if (!loadingIndicator) {
+      loadingIndicator = document.createElement('div');
+      loadingIndicator.className = 'loading-indicator';
+      loadingIndicator.style.position = 'absolute';
+      loadingIndicator.style.top = '50%';
+      loadingIndicator.style.left = '50%';
+      loadingIndicator.style.transform = 'translate(-50%, -50%)';
+      loadingIndicator.style.width = '20px';
+      loadingIndicator.style.height = '20px';
+      loadingIndicator.style.border = '3px solid rgba(255,255,255,0.3)';
+      loadingIndicator.style.borderRadius = '50%';
+      loadingIndicator.style.borderTop = '3px solid #fff';
+      loadingIndicator.style.animation = 'spin 1s linear infinite';
+      button.appendChild(loadingIndicator);
+      
+      // Add keyframes animation if it doesn't exist
+      if (!document.getElementById('loadingAnimationStyle')) {
+        const style = document.createElement('style');
+        style.id = 'loadingAnimationStyle';
+        style.textContent = `
+          @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    }
   }
 }
 
@@ -4062,5 +4280,322 @@ function hideButtonLoading(buttonId) {
   if (button) {
     button.classList.remove('loading');
     button.disabled = false;
+    
+    // Remove loading indicator if it exists
+    const loadingIndicator = button.querySelector('.loading-indicator');
+    if (loadingIndicator) {
+      loadingIndicator.remove();
+    }
+  }
+}
+
+// New function to toggle visibility of the band parameters table
+function toggleBandParametersTable() {
+  const analysisMethodValue = document.getElementById("analysisMethod")?.value;
+  const bandParametersTable = document.getElementById("bandParametersTable");
+
+  if (!bandParametersTable) {
+    console.warn("Band parameters table not found. Skipping visibility toggle.");
+    return;
+  }
+
+  // Remove any existing message element if it exists
+  const existingMessage = document.getElementById("voigt5dParametersMessage");
+  if (existingMessage) {
+    existingMessage.parentNode.removeChild(existingMessage);
+  }
+  
+  if (analysisMethodValue === "voigt5d") {
+    // Hide the table for Voigt 5D
+    bandParametersTable.style.display = "none"; 
+  } else {
+    // Show the table for all other methods
+    bandParametersTable.style.display = ""; 
+  }
+}
+
+// Add a function to toggle the Process All button visibility
+function toggleProcessAllButton() {
+  const analysisMethodValue = document.getElementById("analysisMethod")?.value;
+  const updateButtonContainer = document.getElementById("updateButton").parentNode;
+  
+  // Remove existing Process All button and Stop Processing link if they exist
+  const existingProcessAllButton = document.getElementById("processAllButton");
+  if (existingProcessAllButton) {
+    existingProcessAllButton.remove();
+  }
+  
+  const existingStopProcessingLink = document.getElementById("stopProcessingLink");
+  if (existingStopProcessingLink) {
+    existingStopProcessingLink.remove();
+  }
+  
+  // Add Process All button only if Voigt 5D is selected and not currently batch processing
+  if (analysisMethodValue === "voigt5d" && !isBatchProcessing) {
+    const processAllButton = document.createElement("button");
+    processAllButton.id = "processAllButton";
+    processAllButton.textContent = "Process All";
+    processAllButton.style.backgroundColor = "#888888"; // Grey color
+    processAllButton.style.marginLeft = "10px";
+    processAllButton.style.position = "relative"; // For the loading indicator
+    
+    // Add the click event listener
+    processAllButton.addEventListener("click", startBatchProcessing);
+    
+    // Insert after the Update button
+    updateButtonContainer.appendChild(processAllButton);
+  }
+  
+  // Add Stop Processing link if currently batch processing
+  if (isBatchProcessing) {
+    const stopProcessingLink = document.createElement("a");
+    stopProcessingLink.id = "stopProcessingLink";
+    stopProcessingLink.textContent = "Stop Processing";
+    stopProcessingLink.href = "#";
+    stopProcessingLink.style.marginLeft = "10px";
+    stopProcessingLink.style.color = "#cc0000";
+    stopProcessingLink.style.textDecoration = "underline";
+    stopProcessingLink.style.cursor = "pointer";
+    stopProcessingLink.style.display = "block";
+    stopProcessingLink.style.marginTop = "5px";
+    
+    // Add click event listener
+    stopProcessingLink.addEventListener("click", function(e) {
+      e.preventDefault();
+      shouldStopBatchProcessing = true;
+      stopProcessingLink.textContent = "Stopping...";
+      stopProcessingLink.style.color = "#888888";
+    });
+    
+    // Insert after the Update button
+    updateButtonContainer.appendChild(stopProcessingLink);
+  }
+}
+
+// Implement the batch processing function
+async function startBatchProcessing() {
+  if (isBatchProcessing || allFilesData.length === 0) return;
+  
+  isBatchProcessing = true;
+  shouldStopBatchProcessing = false;
+  
+  // Update UI to show processing state
+  toggleProcessAllButton();
+  showButtonLoading("processAllButton");
+  
+  // Store the current displayed index to restore it later
+  const originalIndex = displayedFileIndex;
+  
+  try {
+    // Process each sample
+    for (let i = 0; i < allFilesData.length; i++) {
+      if (shouldStopBatchProcessing) {
+        console.log("Batch processing stopped by user");
+        break;
+      }
+      
+      // Update the selector to the current sample
+      displayedFileIndex = i;
+      document.getElementById("fileSelector").value = i;
+      
+      // Trigger Voigt 5D processing
+      window.isVoigt5DTriggeredByButton = true;
+      voigt5dProcessedSamples.add(allFilesData[i].name);
+      
+      // Show status message
+      const statusMessage = document.createElement("div");
+      statusMessage.id = "batchProcessingStatus";
+      statusMessage.textContent = `Processing ${i+1}/${allFilesData.length}: ${allFilesData[i].name}`;
+      statusMessage.style.fontSize = "12px";
+      statusMessage.style.color = "#555";
+      statusMessage.style.marginTop = "5px";
+      
+      const existingStatus = document.getElementById("batchProcessingStatus");
+      if (existingStatus) existingStatus.remove();
+      
+      const stopLink = document.getElementById("stopProcessingLink");
+      if (stopLink) {
+        stopLink.parentNode.insertBefore(statusMessage, stopLink.nextSibling);
+      }
+      
+      // Process the current sample
+      await new Promise(resolve => {
+        // Use setTimeout to allow UI updates between samples
+        setTimeout(() => {
+          try {
+            updateDisplayedFile();
+            
+            // Allow time for the processing to complete
+            setTimeout(resolve, 50);
+          } catch (error) {
+            console.error("Error processing sample:", error);
+            resolve(); // Continue with next sample even if this one fails
+          }
+        }, 50);
+      });
+    }
+  } finally {
+    // Restore UI state
+    window.isVoigt5DTriggeredByButton = false;
+    isBatchProcessing = false;
+    
+    // Remove status message
+    const statusMessage = document.getElementById("batchProcessingStatus");
+    if (statusMessage) statusMessage.remove();
+    
+    // Restore original index
+    displayedFileIndex = originalIndex;
+    document.getElementById("fileSelector").value = originalIndex;
+    updateDisplayedFile();
+    
+    // Update UI
+    hideButtonLoading("processAllButton");
+    toggleProcessAllButton();
+    
+    // Save the state to preserve processed samples
+    saveAppState();
+  }
+}
+
+// Add a function to toggle the Process All button visibility for archaeological tab
+function toggleArchaeoProcessAllButton() {
+  const analysisMethodValue = document.getElementById("analysisMethod")?.value;
+  const updateButtonContainer = document.getElementById("archaeoUpdateButton").parentNode;
+  
+  // Remove existing Process All button and Stop Processing link if they exist
+  const existingProcessAllButton = document.getElementById("archaeoProcessAllButton");
+  if (existingProcessAllButton) {
+    existingProcessAllButton.remove();
+  }
+  
+  const existingStopProcessingLink = document.getElementById("archaeoStopProcessingLink");
+  if (existingStopProcessingLink) {
+    existingStopProcessingLink.remove();
+  }
+  
+  // Add Process All button only if Voigt 5D is selected and not currently batch processing
+  if (analysisMethodValue === "voigt5d" && !archaeoBatchProcessing) {
+    const processAllButton = document.createElement("button");
+    processAllButton.id = "archaeoProcessAllButton";
+    processAllButton.textContent = "Process All";
+    processAllButton.style.backgroundColor = "#888888"; // Grey color
+    processAllButton.style.marginLeft = "10px";
+    processAllButton.style.position = "relative"; // For the loading indicator
+    
+    // Add the click event listener
+    processAllButton.addEventListener("click", startArchaeoBatchProcessing);
+    
+    // Insert after the Update button
+    updateButtonContainer.appendChild(processAllButton);
+  }
+  
+  // Add Stop Processing link if currently batch processing
+  if (archaeoBatchProcessing) {
+    const stopProcessingLink = document.createElement("a");
+    stopProcessingLink.id = "archaeoStopProcessingLink";
+    stopProcessingLink.textContent = "Stop Processing";
+    stopProcessingLink.href = "#";
+    stopProcessingLink.style.marginLeft = "10px";
+    stopProcessingLink.style.color = "#cc0000";
+    stopProcessingLink.style.textDecoration = "underline";
+    stopProcessingLink.style.cursor = "pointer";
+    stopProcessingLink.style.display = "block";
+    stopProcessingLink.style.marginTop = "5px";
+    
+    // Add click event listener
+    stopProcessingLink.addEventListener("click", function(e) {
+      e.preventDefault();
+      shouldStopArchaeoBatchProcessing = true;
+      stopProcessingLink.textContent = "Stopping...";
+      stopProcessingLink.style.color = "#888888";
+    });
+    
+    // Insert after the Update button
+    updateButtonContainer.appendChild(stopProcessingLink);
+  }
+}
+
+// Implement the batch processing function for archaeological samples
+async function startArchaeoBatchProcessing() {
+  if (archaeoBatchProcessing || archaeologicalFiles.length === 0) return;
+  
+  archaeoBatchProcessing = true;
+  shouldStopArchaeoBatchProcessing = false;
+  
+  // Update UI to show processing state
+  toggleArchaeoProcessAllButton();
+  showButtonLoading("archaeoProcessAllButton");
+  
+  // Store the current displayed index to restore it later
+  const originalIndex = selectedArchaeoIndex;
+  
+  try {
+    // Process each sample
+    for (let i = 0; i < archaeologicalFiles.length; i++) {
+      if (shouldStopArchaeoBatchProcessing) {
+        console.log("Archaeo batch processing stopped by user");
+        break;
+      }
+      
+      // Update the selector to the current sample
+      selectedArchaeoIndex = i;
+      document.getElementById("archaeoFileSelector").value = i;
+      
+      // Trigger Voigt 5D processing
+      window.isVoigt5DTriggeredByButton = true;
+      voigt5dProcessedSamples.add(archaeologicalFiles[i].name);
+      
+      // Show status message
+      const statusMessage = document.createElement("div");
+      statusMessage.id = "archaeoBatchProcessingStatus";
+      statusMessage.textContent = `Processing ${i+1}/${archaeologicalFiles.length}: ${archaeologicalFiles[i].name}`;
+      statusMessage.style.fontSize = "12px";
+      statusMessage.style.color = "#555";
+      statusMessage.style.marginTop = "5px";
+      
+      const existingStatus = document.getElementById("archaeoBatchProcessingStatus");
+      if (existingStatus) existingStatus.remove();
+      
+      const stopLink = document.getElementById("archaeoStopProcessingLink");
+      if (stopLink) {
+        stopLink.parentNode.insertBefore(statusMessage, stopLink.nextSibling);
+      }
+      
+      // Process the current sample
+      await new Promise(resolve => {
+        // Use setTimeout to allow UI updates between samples
+        setTimeout(() => {
+          try {
+            updateArchaeoPlot();
+            
+            // Allow time for the processing to complete
+            setTimeout(resolve, 50);
+          } catch (error) {
+            console.error("Error processing archaeo sample:", error);
+            resolve(); // Continue with next sample even if this one fails
+          }
+        }, 50);
+      });
+    }
+  } finally {
+    // Restore UI state
+    window.isVoigt5DTriggeredByButton = false;
+    archaeoBatchProcessing = false;
+    
+    // Remove status message
+    const statusMessage = document.getElementById("archaeoBatchProcessingStatus");
+    if (statusMessage) statusMessage.remove();
+    
+    // Restore original index
+    selectedArchaeoIndex = originalIndex;
+    document.getElementById("archaeoFileSelector").value = originalIndex;
+    updateArchaeoPlot();
+    
+    // Update UI
+    hideButtonLoading("archaeoProcessAllButton");
+    toggleArchaeoProcessAllButton();
+    
+    // Save the state to preserve processed samples
+    saveAppState();
   }
 }
