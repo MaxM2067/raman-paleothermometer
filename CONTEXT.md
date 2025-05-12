@@ -12,11 +12,13 @@ This web-based application is designed to analyze Raman spectroscopy data from c
   - Navigate through files using dropdown or quick navigation buttons (<<, >>)
   - Detect D and G peaks using three methods: Simple (moving average), Voigt + Savitzky-Golay, and Voigt (5D).
     - The Voigt (5D) method's full fitting and detailed statistical calculations are explicitly triggered by a "Derive D/G parameters (Voigt 5D)" button press.
-  - Calculate key parameters: HD/HG, D Width, G Width, WD/WG
-  - Plot calibration curves with individual data, averages, standard deviations, and trendlines
-  - Compare Simple vs Voigt results with statistical significance testing
-  - Selectively include/exclude samples using checkboxes
-  - Toggle visibility of smoothing and fitting curves
+  - Calculate key parameters: HD/HG, D Width, G Width, WD/WG in a "Top Peaks" table.
+  - **On-Demand Calibration Curves:**
+    - Select desired parameters (HD/HG, D Width, G Width, WD/WG) via checkboxes.
+    - Click "Build Selected Curves" button to generate and display statistical plots (calibration curves with individual data, averages, standard deviations, and trendlines) for the chosen parameters. This applies to all analysis methods.
+  - Compare Simple vs Voigt results with statistical significance testing (this table still appears automatically after "Update Peaks").
+  - Selectively include/exclude samples using checkboxes in the "Top Peaks" table. This efficiently updates the table display and clears any previously generated on-demand calibration plots.
+  - Toggle visibility of smoothing and fitting curves.
   - Performance optimization: Voigt/Voigt5D analysis results for the currently displayed spectrum are cached to avoid redundant calculations when interactions don't change the underlying data.
 
 - **Archaeological Samples Tab**
@@ -51,7 +53,7 @@ This web-based application is designed to analyze Raman spectroscopy data from c
 - Independent charts for each tab
 - Chart.js based visualizations with hover tooltips and interactive legends
 - Method-specific data visualization (Simple/Voigt) in statistical plots
-- Experimental tab statistical plots feature vertical error bars for parameter standard deviation and horizontal error bars for estimated temperature uncertainty (ΔT).
+- Experimental tab statistical plots (calibration curves) are generated on user request via the "Build Selected Curves" button and feature vertical error bars for parameter standard deviation and horizontal error bars for estimated temperature uncertainty (ΔT).
 - Peak labels with wavelength values
 - Width labels showing FWHM or user-defined % height width values on main spectrum plots.
 - Calibration charts in the Archaeological tab dynamically update with overlaid archaeological sample points, featuring distinct visual styles for points on the mean calibration line, within the SD band only, or out of range, along with informative tooltips.
@@ -168,4 +170,6 @@ This web-based application is designed to analyze Raman spectroscopy data from c
   - Caching of Voigt/Voigt5D analysis results in `updatePlot` for the main experimental spectrum display to avoid redundant computations.
   - Conditional execution of `updateArchaeoPlot` (processing archaeological samples) only when its tab is visible.
   - Removal of redundant `findTopPeaks` call within `displayPeakInfo`; peak parameters are now sourced directly from pre-calculated results.
+  - **On-demand generation of statistical plots (calibration curves) in the Experimental tab:** Reduces initial processing load when files are uploaded or settings are changed, improving app responsiveness.
+  - **Efficient "Top Peaks" table updates:** Toggling sample inclusion checkboxes in the Experimental tab's "Top Peaks" table now directly updates the table display and clears old on-demand plots without triggering full recalculations of all peak parameters for all files.
 

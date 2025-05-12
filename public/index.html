@@ -47,7 +47,7 @@
         <!-- Settings Panel -->
         <div class="settings-block">
           <!-- Upload Section -->
-          <h3 class="section-title">Upload Files (.txt)</h3>
+          <h3 class="section-title">Upload Experimental Spectra (.txt)</h3>
           <div class="upload-section">
             <input type="file" id="fileInput" accept=".txt" multiple />
             <div class="file-selector-row">
@@ -161,6 +161,25 @@
               Restore Default Settings
             </button>
           </div>
+
+          <!-- ADDED: Calibration Curve Controls -->
+          <div id="calibrationCurveControls" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #ccc;">
+            <h4 style="margin-bottom: 10px; margin-top: 0;">Build Calibration Curves:</h4>
+            <label style="margin-right: 15px; display: block; margin-bottom: 5px;">
+              <input type="checkbox" id="cbParamHdHg" value="hdHg" checked> HD/HG
+            </label>
+            <label style="margin-right: 15px; display: block; margin-bottom: 5px;">
+              <input type="checkbox" id="cbParamWdWg" value="wdWg" checked> WD/WG
+            </label>
+            <label style="margin-right: 15px; display: block; margin-bottom: 5px;">
+              <input type="checkbox" id="cbParamDWidth" value="dWidth" checked> D Width
+            </label>
+            <label style="margin-right: 15px; display: block; margin-bottom: 5px;">
+              <input type="checkbox" id="cbParamGWidth" value="gWidth" checked> G Width
+            </label>
+            <button id="buildCalibrationCurvesButton" class="update-button" style="margin-top: 10px;">Build Selected Curves</button>
+          </div>
+          <!-- END ADDED SECTION -->
         </div>
 
         <!-- Chart Area -->
@@ -179,6 +198,10 @@
           <canvas id="spectrumChart"></canvas>
           <div id="peakInfo" style="margin-top: 20px"></div>
           <div id="methodComparisonResults" style="margin-top: 40px"></div>
+          <!-- ADDED: Container for the on-demand plots -->
+          <div id="experimentalStatsPlotsContainer" style="margin-top: 20px;">
+            <!-- Calibration plots will be rendered here -->
+          </div>
         </div>
       </div>
     </div>
@@ -189,7 +212,7 @@
         <!-- Settings Panel -->
         <div class="settings-block">
           <!-- Upload Section -->
-          <h3 class="section-title">Upload Files (.txt)</h3>
+          <h3 class="section-title">Upload Archaeological Spectra (.txt)</h3>
           <div class="upload-section">
             <input type="file" id="archaeoFileInput" accept=".txt" multiple />
             <div class="file-selector-row">

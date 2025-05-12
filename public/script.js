@@ -37,6 +37,11 @@ function saveAppState() {
             showFitting: document.getElementById("showFitting")?.checked,
             archaeoShowSmoothing: document.getElementById("archaeoShowSmoothing")?.checked,
             archaeoShowFitting: document.getElementById("archaeoShowFitting")?.checked,
+            // Add new checkboxes for calibration curve parameters
+            cbParamHdHg: document.getElementById("cbParamHdHg")?.checked,
+            cbParamWdWg: document.getElementById("cbParamWdWg")?.checked,
+            cbParamDWidth: document.getElementById("cbParamDWidth")?.checked,
+            cbParamGWidth: document.getElementById("cbParamGWidth")?.checked,
         }
     };
     try {
@@ -81,6 +86,12 @@ function loadAppState() {
                 setChecked("showFitting", settings.showFitting);
                 setChecked("archaeoShowSmoothing", settings.archaeoShowSmoothing);
                 setChecked("archaeoShowFitting", settings.archaeoShowFitting);
+
+                // Load states for new checkboxes
+                setChecked("cbParamHdHg", settings.cbParamHdHg);
+                setChecked("cbParamWdWg", settings.cbParamWdWg);
+                setChecked("cbParamDWidth", settings.cbParamDWidth);
+                setChecked("cbParamGWidth", settings.cbParamGWidth);
             }
 
             const fileSelector = document.getElementById("fileSelector");
@@ -327,6 +338,88 @@ document.addEventListener("DOMContentLoaded", () => {
         updateArchaeoPlot();
       }
       saveAppState(); // Added saveAppState for consistency
+    });
+  }
+
+  const buildCurvesButton = document.getElementById("buildCalibrationCurvesButton");
+  if (buildCurvesButton) {
+    buildCurvesButton.addEventListener("click", () => {
+      const plotsContainer = document.getElementById("experimentalStatsPlotsContainer");
+      if (!plotsContainer) return;
+      plotsContainer.innerHTML = ''; // Clear previous plots
+
+      // Retrieve the stored data
+      const resultsByMethod = window.latestResultsByMethod;
+      const currentMethod = window.latestCurrentMethod;
+      // const dBandWidthHeight = window.latestDBandWidthHeight; // Not directly used here, but generateStatsPlot might need them via its own logic
+      // const gBandWidthHeight = window.latestGBandWidthHeight;
+
+      if (!resultsByMethod || !currentMethod) {
+        plotsContainer.innerHTML = "<p>Please upload data and update peaks first.</p>";
+        return;
+      }
+
+      const allPeaksForCurrentMethod = resultsByMethod[currentMethod];
+      if (!allPeaksForCurrentMethod || allPeaksForCurrentMethod.length === 0) {
+          plotsContainer.innerHTML = "<p>No peak data available for the current method to build curves.</p>";
+          return;
+      }
+
+      const currentMethodName = currentMethod === 'simple' ? 'Simple' : (currentMethod === 'voigt' ? 'Voigt' : 'Voigt (5D)');
+      
+      let otherMethodDataForComparisonPlot;
+      let otherMethodName = "";
+      if (currentMethod === 'simple') {
+        otherMethodDataForComparisonPlot = resultsByMethod.voigt;
+        otherMethodName = 'Voigt';
+      } else if (currentMethod === 'voigt') {
+        otherMethodDataForComparisonPlot = resultsByMethod.simple;
+        otherMethodName = 'Simple';
+      } else if (currentMethod === 'voigt5d') {
+        otherMethodDataForComparisonPlot = resultsByMethod.voigt || resultsByMethod.simple; // Default to Voigt, fallback to Simple
+        otherMethodName = resultsByMethod.voigt ? 'Voigt' : (resultsByMethod.simple ? 'Simple' : '');
+      }
+
+      const checkedParams = [];
+      if (document.getElementById("cbParamHdHg")?.checked) checkedParams.push({ id: "hdHg", label: "HD/HG Ratio"});
+      if (document.getElementById("cbParamWdWg")?.checked) checkedParams.push({ id: "wdWg", label: "WD/WG Ratio"});
+      if (document.getElementById("cbParamDWidth")?.checked) checkedParams.push({ id: "dWidth", label: "D Width"});
+      if (document.getElementById("cbParamGWidth")?.checked) checkedParams.push({ id: "gWidth", label: "G Width"});
+
+      if (checkedParams.length === 0) {
+          plotsContainer.innerHTML = "<p>Please select at least one parameter to build calibration curves.</p>";
+          return;
+      }
+      
+      const individualDataMaster = { hdHg: [], dWidth: [], gWidth: [], wdWg: [] };
+      allPeaksForCurrentMethod.forEach((file) => {
+          if (includedSamples.has(file.name)) { // Only use included samples
+              const temp = file.temperature.replace(" °C", "");
+              if (temp !== "N/A") {
+                  if (file.hdHg != null) individualDataMaster.hdHg.push({ name: file.name, temperature: temp, value: file.hdHg });
+                  if (file.wdWg != null) individualDataMaster.wdWg.push({ name: file.name, temperature: temp, value: file.wdWg });
+                  if (file.dWidth != null) individualDataMaster.dWidth.push({ name: file.name, temperature: temp, value: file.dWidth });
+                  if (file.gWidth != null) individualDataMaster.gWidth.push({ name: file.name, temperature: temp, value: file.gWidth });
+              }
+          }
+      });
+
+      checkedParams.forEach(paramInfo => {
+        const dataForParam = individualDataMaster[paramInfo.id];
+        
+        let otherDataSubsetForParam = null;
+        if (otherMethodDataForComparisonPlot && otherMethodDataForComparisonPlot.length > 0) {
+            otherDataSubsetForParam = otherMethodDataForComparisonPlot.map(d => ({
+                name: d.name, 
+                temperature: d.temperature.replace(" °C", ""), // Ensure temp is numeric string here too
+                value: d[paramInfo.id]
+            })).filter(d => d.value != null); // Filter out points where the specific param is null for the other method
+        }
+
+        const plotElement = generateStatsPlot(dataForParam, paramInfo.label, otherDataSubsetForParam, currentMethodName, otherMethodName);
+        plotsContainer.appendChild(plotElement);
+      });
+      saveAppState(); // Save checkbox states
     });
   }
 });
@@ -1195,6 +1288,17 @@ function updatePlot(spectrumData) {
 
   // Compare results from both methods
   compareMethods(resultsByMethod.simple, resultsByMethod.voigt);
+
+  // Ensure resultsByMethod.voigt5d is at least an empty array if not processed
+  if (!resultsByMethod.voigt5d) {
+      resultsByMethod.voigt5d = [];
+  }
+
+  // Store these for the new button to use
+  window.latestResultsByMethod = resultsByMethod;
+  window.latestCurrentMethod = currentMethodForDisplay;
+  window.latestDBandWidthHeight = dBandWidthHeight;
+  window.latestGBandWidthHeight = gBandWidthHeight;
 }
 
 function parseSpectrumData(text) {
@@ -1970,37 +2074,6 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
   // Append the table container to peakInfoDiv
   peakInfoDiv.appendChild(tableContainer);
 
-  // Create stats container
-  const statsContainer = document.createElement('div');
-  statsContainer.style.cssText = 'margin-top: 20px;';
-
-  // Get the other method's data based on current method
-  const otherMethodData = method === 'simple' ? resultsByMethod.voigt : resultsByMethod.simple;
-  const otherMethodName = method === 'simple' ? 'Voigt' : 'Simple';
-  const currentMethodName = method === 'simple' ? 'Simple' : 'Voigt';
-
-  // Create and append statistical plots (based on updated individualData)
-  const hdHgPlot = generateStatsPlot(individualData.hdHg, "HD/HG Ratio", 
-    otherMethodData ? otherMethodData.map(d => ({ name: d.name, temperature: d.temperature, value: d.hdHg })) : null,
-    currentMethodName, otherMethodName);
-  const dWidthPlot = generateStatsPlot(individualData.dWidth, "D Width", 
-    otherMethodData ? otherMethodData.map(d => ({ name: d.name, temperature: d.temperature, value: d.dWidth })) : null,
-    currentMethodName, otherMethodName);
-  const gWidthPlot = generateStatsPlot(individualData.gWidth, "G Width", 
-    otherMethodData ? otherMethodData.map(d => ({ name: d.name, temperature: d.temperature, value: d.gWidth })) : null,
-    currentMethodName, otherMethodName);
-  const wdWgPlot = generateStatsPlot(individualData.wdWg, "WD/WG Ratio", 
-    otherMethodData ? otherMethodData.map(d => ({ name: d.name, temperature: d.temperature, value: d.wdWg })) : null,
-    currentMethodName, otherMethodName);
-
-  statsContainer.appendChild(hdHgPlot);
-  statsContainer.appendChild(dWidthPlot);
-  statsContainer.appendChild(gWidthPlot);
-  statsContainer.appendChild(wdWgPlot);
-
-  // Append the stats container to peakInfoDiv
-  peakInfoDiv.appendChild(statsContainer);
-
   // Add event listeners after elements are in the DOM
   setTimeout(() => {
     const selectAllCheckbox = document.getElementById('selectAllCheckbox');
@@ -2016,11 +2089,18 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
             } else {
                 currentSampleNamesOnDisplay.forEach(name => includedSamples.delete(name));
             }
-            updateDisplayedFile(); 
+            const plotsContainer = document.getElementById("experimentalStatsPlotsContainer");
+            if (plotsContainer) plotsContainer.innerHTML = '';
+
+            // Instead, re-render the peak info table directly
+            if (window.latestResultsByMethod && window.latestCurrentMethod) {
+                displayPeakInfo(window.latestResultsByMethod[window.latestCurrentMethod], window.latestCurrentMethod, window.latestDBandWidthHeight, window.latestGBandWidthHeight, window.latestResultsByMethod);
+            }
+
             if (document.getElementById("archaeologicalSection").style.display !== "none") {
                 updateArchaeoPlot();
             }
-            saveAppState(); // Save state
+            saveAppState(); 
         });
     }
 
@@ -2033,7 +2113,14 @@ function displayPeakInfo(allPeaks, method, dBandWidthHeight, gBandWidthHeight, r
         } else {
           includedSamples.delete(sampleName);
         }
-        updateDisplayedFile();
+        const plotsContainer = document.getElementById("experimentalStatsPlotsContainer");
+        if (plotsContainer) plotsContainer.innerHTML = '';
+
+        // Instead, re-render the peak info table directly
+        if (window.latestResultsByMethod && window.latestCurrentMethod) {
+            displayPeakInfo(window.latestResultsByMethod[window.latestCurrentMethod], window.latestCurrentMethod, window.latestDBandWidthHeight, window.latestGBandWidthHeight, window.latestResultsByMethod);
+        }
+
         if (document.getElementById("archaeologicalSection").style.display !== "none") {
             updateArchaeoPlot();
         }

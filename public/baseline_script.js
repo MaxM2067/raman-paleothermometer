@@ -176,8 +176,8 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const wl1 = 850;
-    const wl2 = 2150;
+    const wl1 = 900;
+    const wl2 = 2000;
 
     const intensityAtWl1 = interpolateIntensity(wl1, currentSpectrumData.wavelengths, currentSpectrumData.intensities);
     const intensityAtWl2 = interpolateIntensity(wl2, currentSpectrumData.wavelengths, currentSpectrumData.intensities);
