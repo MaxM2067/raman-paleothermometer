@@ -8,6 +8,11 @@ window.isVoigt5DTriggeredByButton = false; // Corrected global flag initializati
 // Add this flag at the top of your script
 let isLoadingState = false;
 
+// Add new global/window variable if not already present
+if (typeof window.archaeologicalFiles === 'undefined') {
+    window.archaeologicalFiles = [];
+}
+
 if (!window.statsCharts) window.statsCharts = {};
 if (!window.myCharts) window.myCharts = {}; // Ensure this is also initialized if not already
 
@@ -42,6 +47,11 @@ function saveAppState() {
             cbParamWdWg: document.getElementById("cbParamWdWg")?.checked,
             cbParamDWidth: document.getElementById("cbParamDWidth")?.checked,
             cbParamGWidth: document.getElementById("cbParamGWidth")?.checked,
+            // New for Archaeo Tab
+            archaeoCbParamHdHg: document.getElementById("archaeoCbParamHdHg")?.checked,
+            archaeoCbParamWdWg: document.getElementById("archaeoCbParamWdWg")?.checked,
+            archaeoCbParamDWidth: document.getElementById("archaeoCbParamDWidth")?.checked,
+            archaeoCbParamGWidth: document.getElementById("archaeoCbParamGWidth")?.checked,
         }
     };
     try {
@@ -92,6 +102,12 @@ function loadAppState() {
                 setChecked("cbParamWdWg", settings.cbParamWdWg);
                 setChecked("cbParamDWidth", settings.cbParamDWidth);
                 setChecked("cbParamGWidth", settings.cbParamGWidth);
+
+                // Load states for new archaeo checkboxes
+                setChecked("archaeoCbParamHdHg", settings.archaeoCbParamHdHg);
+                setChecked("archaeoCbParamWdWg", settings.archaeoCbParamWdWg);
+                setChecked("archaeoCbParamDWidth", settings.archaeoCbParamDWidth);
+                setChecked("archaeoCbParamGWidth", settings.archaeoCbParamGWidth);
             }
 
             const fileSelector = document.getElementById("fileSelector");
@@ -422,6 +438,40 @@ document.addEventListener("DOMContentLoaded", () => {
       saveAppState(); // Save checkbox states
     });
   }
+
+  // Add event listener for the new "Build Selected Curves (Archaeo)" button
+  const archaeoBuildCurvesButton = document.getElementById("archaeoBuildCalibrationCurvesButton");
+  if (archaeoBuildCurvesButton) {
+    archaeoBuildCurvesButton.addEventListener("click", () => {
+      const archaeoPlotsContainer = document.getElementById("archaeoCalibrationPlots");
+      if (!archaeoPlotsContainer) {
+          console.error("archaeoCalibrationPlots container not found!");
+          return;
+      }
+      archaeoPlotsContainer.innerHTML = ''; // Clear previous plots
+
+      if (!window.calibrationStats || Object.keys(window.calibrationStats).length === 0) {
+          archaeoPlotsContainer.innerHTML = "<p>Calibration data not yet processed. Please ensure experimental data is loaded and an analysis method is active.</p>";
+          return;
+      }
+
+      const archaeoCheckedParams = [];
+      if (document.getElementById("archaeoCbParamHdHg")?.checked) archaeoCheckedParams.push({ id: "hdHg", label: "HD/HG Ratio"});
+      if (document.getElementById("archaeoCbParamWdWg")?.checked) archaeoCheckedParams.push({ id: "wdWg", label: "WD/WG Ratio"});
+      if (document.getElementById("archaeoCbParamDWidth")?.checked) archaeoCheckedParams.push({ id: "dWidth", label: "D Width"});
+      if (document.getElementById("archaeoCbParamGWidth")?.checked) archaeoCheckedParams.push({ id: "gWidth", label: "G Width"});
+
+      if (archaeoCheckedParams.length === 0) {
+          archaeoPlotsContainer.innerHTML = "<p>Please select at least one parameter to build calibration curves for the archaeological samples.</p>";
+          return;
+      }
+      
+      generateCalibrationCharts(archaeoCheckedParams); 
+      saveAppState(); 
+    });
+  } else {
+      console.warn("archaeoBuildCalibrationCurvesButton not found. Please add it to index.html.");
+  }
 });
 
 // Register the error bars plugin
@@ -743,111 +793,136 @@ function updateArchaeoPlot() {
 
   // Always update calibration charts if we have experimental data
   if (allFilesData.length > 0) {
-    const resultsByMethod = {
-      simple: [],
-      voigt: [],
-      voigt5d: [], 
-    };
+    // ***** START OF MODIFICATION *****
+    let resultsForCalibration; // This will hold the data for generateCalibrationCharts
 
-    // Get the currently selected analysis method from the UI
-    const currentMethodForDisplay = document.getElementById("analysisMethod").value; // This is 'method' from earlier, can reuse
+    const currentDBandWidth = parseFloat(document.getElementById("dBandWidthHeight").value);
+    const currentGBandWidth = parseFloat(document.getElementById("gBandWidthHeight").value);
+    // currentMethodForDisplay is defined later, but we might need it for a more complex check in the future
+    // const currentAnalysisMethodForUI = document.getElementById("analysisMethod").value;
 
-    allFilesData.forEach((fileData) => {
-      const methodsToFullyProcess = ["simple", "voigt"];
-      // 'currentMethodForDisplay' (which is 'method' in this function) is the key here
-      if (method === "voigt5d") { 
-          methodsToFullyProcess.push("voigt5d");
-      }
+    // Check if global results are available and suitable
+    if (window.latestResultsByMethod &&
+        typeof window.latestResultsByMethod === 'object' &&
+        Array.isArray(window.latestResultsByMethod.simple) &&
+        Array.isArray(window.latestResultsByMethod.voigt) &&
+        Array.isArray(window.latestResultsByMethod.voigt5d) &&
+        window.latestDBandWidthHeight === currentDBandWidth && // Compare width settings
+        window.latestGBandWidthHeight === currentGBandWidth    // Compare width settings
+       ) {
+        console.log("updateArchaeoPlot: Using pre-calculated results from window.latestResultsByMethod for calibration charts.");
+        resultsForCalibration = window.latestResultsByMethod;
+    } else {
+        console.log("updateArchaeoPlot: Recalculating results for calibration charts as pre-calculated data is unsuitable or unavailable.");
+        // This block is the original calculation logic for resultsByMethod, now assigned to resultsForCalibration
+        resultsForCalibration = { // Initialize the object to be populated
+            simple: [],
+            voigt: [],
+            voigt5d: [],
+        };
 
-      ["simple", "voigt", "voigt5d"].forEach((methodName) => {
-        const callContextId = methodName + "_stats_context"; // Create a distinct context ID
+        // Get the currently selected analysis method from the UI
+        // 'method' is defined earlier in updateArchaeoPlot and holds document.getElementById("analysisMethod").value
+        const currentMethodForDisplay = method; // Use the 'method' variable available in this scope
 
-        let shouldFullyProcessThisStat;
-        if (methodName === "voigt5d") {
-          // For Voigt (5D) stats, only process if it's the current method AND button was pressed
-          shouldFullyProcessThisStat = (currentMethodForDisplay === "voigt5d" && window.isVoigt5DTriggeredByButton);
-        } else {
-          // For simple and voigt, process them (they are always in methodsToFullyProcess if they are the current method or implicitly needed)
-          shouldFullyProcessThisStat = methodsToFullyProcess.includes(methodName); // This remains as is, simple/voigt run if in the list
+        allFilesData.forEach((fileData) => {
+            const methodsToFullyProcess = ["simple", "voigt"];
+            // 'currentMethodForDisplay' is the analysis method selected in the UI when updateArchaeoPlot is called
+            if (currentMethodForDisplay === "voigt5d") {
+                methodsToFullyProcess.push("voigt5d");
+            }
+
+            ["simple", "voigt", "voigt5d"].forEach((methodName) => {
+                const callContextId = methodName + "_stats_context_archaeo_recalc"; // Distinct context ID
+
+                let shouldFullyProcessThisStat;
+                if (methodName === "voigt5d") {
+                    // For Voigt (5D) stats, only process if it's the current method AND button was pressed
+                    shouldFullyProcessThisStat = (currentMethodForDisplay === "voigt5d" && window.isVoigt5DTriggeredByButton);
+                } else {
+                    shouldFullyProcessThisStat = methodsToFullyProcess.includes(methodName);
+                }
+
+                if (shouldFullyProcessThisStat) {
+                    const divisionPointForStatsLoop = getDivisionPoint(
+                        fileData.spectrumData.wavelengths,
+                        fileData.spectrumData.intensities,
+                        intervals, // These are UI intervals, defined earlier in updateArchaeoPlot
+                        methodName
+                    );
+
+                    let plotIntervalsForStats;
+                    if (methodName === "voigt" || methodName === "voigt5d") {
+                        plotIntervalsForStats = [
+                            { start: 1150, end: divisionPointForStatsLoop },
+                            { start: divisionPointForStatsLoop, end: 1700 }
+                        ];
+                    } else {
+                        plotIntervalsForStats = intervals; // Use UI intervals for simple
+                    }
+
+                    // widthPercentages is defined earlier in updateArchaeoPlot
+                    const { topPeaks } = findTopPeaks(
+                        fileData.spectrumData.wavelengths,
+                        fileData.spectrumData.intensities,
+                        plotIntervalsForStats,
+                        widthPercentages, // This comes from the UI (dBandWidthHeight, gBandWidthHeight)
+                        methodName,
+                        callContextId
+                    );
+
+                    const d = topPeaks[0] || {};
+                    const g = topPeaks[1] || {};
+                    const hdHg = d.height && g.height && g.height !== 0 ? d.height / g.height : null;
+                    const wdWg = d.width && g.width && g.width !== 0 ? d.width / g.width : null;
+                    const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
+                    const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
+
+                    resultsForCalibration[methodName].push({
+                        name: fileData.name,
+                        temperature,
+                        hdHg,
+                        dHeight: d.height || null,
+                        gHeight: g.height || null,
+                        dWidth: d.width || null,
+                        gWidth: g.width || null,
+                        wdWg,
+                        dPeakWavelength: d.wavelength || null,
+                        gPeakWavelength: g.wavelength || null
+                    });
+                } else {
+                    // This case applies to "voigt5d" when it's not the currentMethodForDisplay OR button not pressed.
+                    // Populate with placeholder data.
+                    const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
+                    const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
+                    resultsForCalibration[methodName].push({ // methodName here will be "voigt5d"
+                        name: fileData.name,
+                        temperature,
+                        hdHg: null, dHeight: null, gHeight: null, dWidth: null, gWidth: null, wdWg: null,
+                        dPeakWavelength: null, gPeakWavelength: null
+                    });
+                }
+            });
+        });
+
+        // Ensure resultsForCalibration.voigt5d is at least an empty array if not processed/initialized
+        if (!resultsForCalibration.voigt5d) {
+            resultsForCalibration.voigt5d = [];
         }
+    } // ***** END OF MODIFICATION for populating resultsForCalibration *****
 
-        if (shouldFullyProcessThisStat) {
-          const divisionPointForStatsLoop = getDivisionPoint( // Renamed to avoid conflict
-            fileData.spectrumData.wavelengths,
-            fileData.spectrumData.intensities,
-            intervals, // These are UI intervals
-            methodName
-          );
-
-          let plotIntervalsForStats;
-          if (methodName === "voigt" || methodName === "voigt5d") {
-            plotIntervalsForStats = [
-              { start: 1150, end: divisionPointForStatsLoop }, // Use renamed divisionPoint
-              { start: divisionPointForStatsLoop, end: 1700 }  // Use renamed divisionPoint
-            ];
-          } else {
-            plotIntervalsForStats = intervals; // Use UI intervals for simple
-          }
-
-          const { topPeaks } = findTopPeaks(
-            fileData.spectrumData.wavelengths,
-            fileData.spectrumData.intensities,
-            plotIntervalsForStats,
-            widthPercentages,
-            methodName,
-            callContextId // Pass distinct context ID
-          );
-
-          const d = topPeaks[0] || {};
-          const g = topPeaks[1] || {};
-          const hdHg = d.height && g.height && g.height !== 0 ? d.height / g.height : null;
-          const wdWg = d.width && g.width && g.width !== 0 ? d.width / g.width : null;
-          const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
-          const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
-
-          resultsByMethod[methodName].push({
-            name: fileData.name,
-            temperature,
-            hdHg,
-            dHeight: d.height || null,
-            gHeight: g.height || null,
-            dWidth: d.width || null,
-            gWidth: g.width || null,
-            wdWg,
-            dPeakWavelength: d.wavelength || null,
-            gPeakWavelength: g.wavelength || null
-          });
-        } else {
-          // This case applies to "voigt5d" when it's not the currentMethodForDisplay.
-          // Populate with placeholder data.
-          const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
-          const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
-          resultsByMethod[methodName].push({ // methodName here will be "voigt5d"
-            name: fileData.name,
-            temperature,
-            hdHg: null, dHeight: null, gHeight: null, dWidth: null, gWidth: null, wdWg: null,
-            dPeakWavelength: null, gPeakWavelength: null
-          });
-        }
-      });
-    });
-
-    // Ensure resultsByMethod.voigt5d is at least an empty array if not processed
-    if (!resultsByMethod.voigt5d) {
-        resultsByMethod.voigt5d = [];
-    }
 
     // Calculate divisionPoint for the current spectrum being displayed
     const divisionPointForDisplay = getDivisionPoint(
       spectrumData.wavelengths,
       spectrumData.intensities,
       intervals, // UI intervals for the specific method being displayed
-      currentMethodForDisplay
+      method // 'method' is the currentMethodForDisplay for the archaeo plot
     );
 
     // Use broad intervals only for Voigt, otherwise use user intervals for display
     let plotIntervalsForDisplay;
-    if (currentMethodForDisplay === "voigt" || currentMethodForDisplay === "voigt5d") {
+    if (method === "voigt" || method === "voigt5d") {
       plotIntervalsForDisplay = [
         { start: 1150, end: divisionPointForDisplay },
         { start: divisionPointForDisplay, end: 1700 }
@@ -861,16 +936,24 @@ function updateArchaeoPlot() {
       spectrumData.intensities,
       plotIntervalsForDisplay, // Use display-specific intervals
       widthPercentages,
-      currentMethodForDisplay, // Use the method selected in the UI
-      "archaeoSpectrumChart" // Changed from "spectrumChart"
+      method, // Use the method selected in the UI for the archaeo plot
+      "archaeoSpectrumChart" 
     );
 
-    // Generate calibration charts using Voigt method data
-    const container = document.getElementById('archaeoCalibrationPlots');
-    if (container) {
-      container.innerHTML = '';
-      generateCalibrationCharts(resultsByMethod.voigt, "voigt");
+    // **NEW**: Calculate and store calibration stats but don't plot yet
+    if (resultsForCalibration && resultsForCalibration.voigt) { // Assuming Voigt is default for calibration stats
+        calculateAndStoreCalibrationStats(resultsForCalibration.voigt, "voigt");
+    } else {
+        console.warn("updateArchaeoPlot: Voigt data not available in resultsForCalibration for calibration stats calculation.");
+        window.calibrationStats = {}; // Ensure it's cleared or empty
     }
+
+    // Clear the calibration plots container in archaeo tab, user will click button to build them
+    const archaeoPlotsContainer = document.getElementById('archaeoCalibrationPlots');
+    if (archaeoPlotsContainer) {
+        archaeoPlotsContainer.innerHTML = '<p style="text-align: center; margin-top: 20px;">Select parameters and click "Build Selected Curves" to generate calibration plots.</p>';
+    }
+    // The original call to generateCalibrationCharts is removed from here.
   }
 }
 
@@ -2745,7 +2828,7 @@ function generateStatsPlot(data, method, otherMethodData, currentMethodName, oth
 
 function getDivisionPoint(wavelengths, intensities, intervals, method) {
   // Find D and G peak centers in user intervals
-  const processedIntensities = (method === "voigt")
+  const processedIntensities = (method === "voigt" || method === "voigt5d") // Also smooth for voigt5d context here
     ? savitzkyGolaySmooth(intensities, 11, 2)
     : intensities;
 
@@ -2810,66 +2893,44 @@ function getDivisionPoint(wavelengths, intensities, intervals, method) {
   return divisionPoint;
 }
 
-function generateCalibrationCharts(data, method) {
-  if (!data || data.length === 0) return;
+function generateCalibrationCharts(selectedParameters) { // NEW SIGNATURE
+  // if (!data || data.length === 0) return; // OLD CHECK - data is no longer a direct param
 
-  // Filter data to only include checked samples
-  const filteredData = data.filter(point => includedSamples.has(point.name));
+  if (!window.calibrationStats || Object.keys(window.calibrationStats).length === 0) {
+      console.warn("generateCalibrationCharts: window.calibrationStats is not available or empty.");
+      const container = document.getElementById('archaeoCalibrationPlots');
+      if (container) container.innerHTML = '<p>Calibration statistics not available. Please process experimental data first.</p>';
+      return;
+  }
+  // selectedParameters is already checked by the caller button's event listener
 
-  // Group data by temperature
-  const groupedData = {};
-  filteredData.forEach(point => {
-    if (!groupedData[point.temperature]) {
-      groupedData[point.temperature] = [];
-    }
-    groupedData[point.temperature].push(point);
-  });
-
-  // Calculate means and standard deviations for each parameter
-  const parameters = ['hdHg', 'dWidth', 'gWidth', 'wdWg'];
-  const stats = {};
-  
-  parameters.forEach(param => {
-    stats[param] = Object.entries(groupedData).map(([temp, points]) => {
-      const values = points.map(p => p[param]).filter(v => v != null);
-      if (values.length === 0) return null;
-      
-      const mean = values.reduce((a, b) => a + b) / values.length;
-      const stdDev = Math.sqrt(
-        values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length
-      );
-      
-      return {
-        x: parseFloat(temp),
-        y: mean,
-        stdDev
-      };
-    }).filter(point => point != null);
-  });
-
-  // Make stats globally accessible for archaeological temperature derivation
-  window.calibrationStats = stats;
+  const stats = window.calibrationStats; // Use global stats
 
   // Create container for all plots
   const container = document.getElementById('archaeoCalibrationPlots');
   if (!container) return;
-  container.innerHTML = '';
+  // container.innerHTML = ''; // Clearing is now done by the button click handler
 
   // Create a flex container for the grid layout with fixed height
   const gridContainer = document.createElement('div');
-  gridContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; height: 850px;';
+  gridContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; height: 850px;'; // Keep existing style
   container.appendChild(gridContainer);
 
   // Create individual chart containers
-  parameters.forEach((param, index) => {
+  // parameters.forEach((param, index) => { // OLD ITERATION
+  selectedParameters.forEach(paramInfo => { // NEW ITERATION over selected params
+    const param = paramInfo.id; // e.g., 'hdHg'
+    const paramLabel = paramInfo.label; // e.g., 'HD/HG Ratio'
+
     const chartContainer = document.createElement('div');
     chartContainer.style.cssText = 'flex: 0 1 calc(50% - 10px); min-width: 300px; height: 400px; margin-bottom: 20px;';
     
     const title = document.createElement('h4');
     title.style.cssText = 'text-align: center; margin: 0 0 10px 0';
-    title.textContent = param === 'hdHg' ? 'HD/HG Ratio' :
-                       param === 'dWidth' ? 'D Width' :
-                       param === 'gWidth' ? 'G Width' : 'WD/WG Ratio';
+    // title.textContent = param === 'hdHg' ? 'HD/HG Ratio' : // OLD TITLE LOGIC
+    //                    param === 'dWidth' ? 'D Width' :
+    //                    param === 'gWidth' ? 'G Width' : 'WD/WG Ratio';
+    title.textContent = paramLabel; // NEW: Use paramLabel from selectedParameters
     
     const canvas = document.createElement('canvas');
     canvas.id = `archaeoCalibration_${param}`;
@@ -3175,7 +3236,7 @@ function generateCalibrationCharts(data, method) {
             },
             y: {
               type: 'linear',
-              title: { display: true, text: title.textContent },
+              title: { display: true, text: paramLabel }, // NEW Y-AXIS TITLE from paramInfo
               min: minY,
               max: maxY
             }
@@ -3827,4 +3888,53 @@ function fitDComplexAndGPeak_Voigt5D(xDataD_input, yDataD_input, xDataG_input, y
         gPeak: gPeakForTable,
         fittedCurves: fittedCurvesOut
     };
+}
+
+// New function to calculate and store calibration statistics
+function calculateAndStoreCalibrationStats(experimentalDataForCalibration, analysisMethodName /* currently "voigt" is implied */) {
+    if (!experimentalDataForCalibration || experimentalDataForCalibration.length === 0) {
+        console.warn("calculateAndStoreCalibrationStats: No experimental data provided for calibration.");
+        window.calibrationStats = {}; // Clear or set to empty
+        return;
+    }
+
+    // Filter data to only include checked samples from the experimental tab
+    const filteredExperimentalData = experimentalDataForCalibration.filter(point => includedSamples.has(point.name));
+
+    if (filteredExperimentalData.length === 0) {
+        console.warn("calculateAndStoreCalibrationStats: No *included* experimental samples to build calibration stats.");
+        window.calibrationStats = {};
+        return;
+    }
+    
+    const groupedData = {};
+    filteredExperimentalData.forEach(point => {
+        const tempStr = String(point.temperature).replace(" °C", ""); // Ensure it's a string then replace
+        if (!groupedData[tempStr]) {
+            groupedData[tempStr] = [];
+        }
+        groupedData[tempStr].push(point);
+    });
+
+    const parameters = ['hdHg', 'dWidth', 'gWidth', 'wdWg'];
+    const newCalibStats = {};
+    parameters.forEach(param => {
+        newCalibStats[param] = Object.entries(groupedData).map(([temp, points]) => {
+            const values = points.map(p => p[param]).filter(v => v != null && !isNaN(parseFloat(v)));
+             if (values.length === 0) return null;
+
+            const numericValues = values.map(parseFloat);
+            const mean = numericValues.reduce((a, b) => a + b, 0) / numericValues.length;
+            const stdDev = Math.sqrt(
+                numericValues.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / numericValues.length
+            );
+            return { x: parseFloat(temp), y: mean, stdDev };
+        }).filter(point => point != null);
+        
+        if (newCalibStats[param]) {
+            newCalibStats[param].sort((a, b) => a.x - b.x); // Sort by temperature
+        }
+    });
+    window.calibrationStats = newCalibStats;
+    console.log("Updated window.calibrationStats:", window.calibrationStats);
 }

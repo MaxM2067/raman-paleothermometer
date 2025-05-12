@@ -230,6 +230,31 @@
               Derive Temperatures
             </button>
           </div>
+
+          <!-- New controls for on-demand calibration curve plotting -->
+          <div class="control-group" style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 15px;">
+            <h4 style="margin-bottom: 10px; margin-top: 0;">Plot on Calibration Curves:</h4>
+            <div style="gap: 15px; margin-bottom: 10px;">
+                <div>
+                    <input type="checkbox" id="archaeoCbParamHdHg" name="archaeoCbParamHdHg" checked>
+                    <label for="archaeoCbParamHdHg" style="margin-left: 5px;">HD/HG Ratio</label>
+                </div>
+                <div>
+                    <input type="checkbox" id="archaeoCbParamWdWg" name="archaeoCbParamWdWg" checked>
+                    <label for="archaeoCbParamWdWg" style="margin-left: 5px;">WD/WG Ratio</label>
+                </div>
+                <div>
+                    <input type="checkbox" id="archaeoCbParamDWidth" name="archaeoCbParamDWidth" checked>
+                    <label for="archaeoCbParamDWidth" style="margin-left: 5px;">D Width</label>
+                </div>
+                <div>
+                    <input type="checkbox" id="archaeoCbParamGWidth" name="archaeoCbParamGWidth" checked>
+                    <label for="archaeoCbParamGWidth" style="margin-left: 5px;">G Width</label>
+                </div>
+            </div>
+            <button id="archaeoBuildCalibrationCurvesButton" class="button update-button">Build Selected Curves (Archaeo)</button>
+          </div>
+
         </div>
 
         <!-- Chart Area -->
@@ -250,8 +275,10 @@
           <div id="derivedTemperatureTable" style="margin-top: 30px"></div>
           <div id="archaeoStats" style="margin-top: 40px"></div>
           <div id="archaeoCalibrationCharts" style="margin-top: 40px; border-top: 1px solid #ccc; padding-top: 20px;">
-            <h3>Calibration Curves</h3>
-            <div id="archaeoCalibrationPlots"></div>
+            <!-- Title removed as it's now part of individual plot generation logic -->
+            <div id="archaeoCalibrationPlots" style="min-height: 100px; border: 1px dashed #eee; padding: 10px;">
+                <p style="text-align: center; margin-top: 20px;">Select parameters and click "Build Selected Curves" to generate calibration plots with archaeological sample overlays.</p>
+            </div>
           </div>
         </div>
       </div>
