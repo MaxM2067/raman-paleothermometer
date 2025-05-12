@@ -1499,16 +1499,47 @@ function updatePlot(spectrumData) {
           voigt5dProcessedSamples.add(fileData.name);
         }
       } else {
-        // This case applies to "voigt5d" when it's not the currentMethodForDisplay OR button not pressed.
-        // Populate with placeholder data.
-        const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
-        const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
-        resultsByMethod[methodName].push({ // methodName here will be "voigt5d"
-          name: fileData.name,
-          temperature,
-          hdHg: null, dHeight: null, gHeight: null, dWidth: null, gWidth: null, wdWg: null,
-          dPeakWavelength: null, gPeakWavelength: null
-        });
+        // This case applies when a method is not being fully processed (e.g., Voigt5D and button not pressed)
+        if (methodName === "voigt5d") {
+          let existingVoigt5DData = null;
+          if (window.latestResultsByMethod && window.latestResultsByMethod.voigt5d) {
+            existingVoigt5DData = window.latestResultsByMethod.voigt5d.find(
+              item => item.name === fileData.name
+            );
+          }
+
+          // Check if existing data is valid and the sample was marked as processed
+          if (existingVoigt5DData && 
+              typeof existingVoigt5DData === 'object' && 
+              voigt5dProcessedSamples.has(fileData.name) &&
+              ((existingVoigt5DData.hdHg !== null && typeof existingVoigt5DData.hdHg !== 'undefined') ||
+               (existingVoigt5DData.dWidth !== null && typeof existingVoigt5DData.dWidth !== 'undefined') ||
+               (existingVoigt5DData.gWidth !== null && typeof existingVoigt5DData.gWidth !== 'undefined') ||
+               (existingVoigt5DData.wdWg !== null && typeof existingVoigt5DData.wdWg !== 'undefined'))) {
+            resultsByMethod[methodName].push(JSON.parse(JSON.stringify(existingVoigt5DData))); // Use a copy of existing valid data
+          } else {
+            // Fallback to placeholder if no valid existing data
+            const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
+            const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
+            resultsByMethod[methodName].push({
+              name: fileData.name,
+              temperature,
+              hdHg: null, dHeight: null, gHeight: null, dWidth: null, gWidth: null, wdWg: null,
+              dPeakWavelength: null, gPeakWavelength: null
+            });
+          }
+        } else {
+          // Original placeholder logic for other methods (e.g., simple, voigt) if they weren't fully processed.
+          // (Though, for simple/voigt, shouldFullyProcessThisStat is usually true based on current logic)
+          const match = fileData.name.match(/(^|[^0-9])\d{3,4}(?![0-9])/);
+          const temperature = match ? `${match[0].replace(/[^0-9]/g, "")}` : "N/A";
+          resultsByMethod[methodName].push({
+            name: fileData.name,
+            temperature,
+            hdHg: null, dHeight: null, gHeight: null, dWidth: null, gWidth: null, wdWg: null,
+            dPeakWavelength: null, gPeakWavelength: null
+          });
+        }
       }
     });
   });
